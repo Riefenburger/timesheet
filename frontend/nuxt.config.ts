@@ -10,4 +10,7 @@ export default defineNuxtConfig({
   devServer: {
     port: 3001,
   },
+  routeRules: {
+    "/api/**": { proxy: "http://localhost:3000/**"},
+  },
 });
