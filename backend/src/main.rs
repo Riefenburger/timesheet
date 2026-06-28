@@ -9,26 +9,56 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
-// Incoming JSON when adding an entry. No id or created_at here —
-// the database fills those in.
+// ===== Employees =====
+
 #[derive(Deserialize)]
-struct NewEntry {
-    user_name: String,
-    entry_date: NaiveDate,
-    #[serde(with = "rust_decimal::serde::float")]
-    hours: Decimal,
-    description: String,
+struct NewEmployee {
+    name: String,
+    employee_number: String,
+    email: Option<String>,
+    is_admin: bool,
+    is_salaried: bool,
+    #[serde(with = "rust_decimal::serde::float_option")]
+    salary: Option<Decimal>,
 }
 
-// A full row as it exists in the database, sent back out as JSON.
+#[derive(Serialize)]
+struct Employee {
+    id: i64,
+    name: String,
+    employee_number: String,
+    email: Option<String>,
+    google_sub: Option<String>,
+    is_admin: bool,
+    is_salaried: bool,
+    #[serde(with = "rust_decimal::serde::float_option")]
+    salary: Option<Decimal>,
+    created_at: DateTime<Utc>,
+}
+
+// ===== Time entries =====
+
+#[derive(Deserialize)]
+struct NewTimeEntry {
+    employee_id: i64,
+    entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    hours: Decimal,
+}
+
 #[derive(Serialize)]
 struct TimeEntry {
     id: i64,
-    user_name: String,
+    employee_id: i64,
     entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
-    description: String,
     created_at: DateTime<Utc>,
 }
 
@@ -45,10 +75,9 @@ async fn main() {
         .await
         .expect("Failed to connect to the database");
 
-    // The pool is handed to the router as shared state, so every
-    // handler can reach the database via the State extractor.
     let app = Router::new()
         .route("/", get(root_handler))
+        .route("/employees", get(list_employees).post(create_employee))
         .route("/entries", get(list_entries).post(create_entry))
         .with_state(pool);
 
@@ -63,22 +92,77 @@ async fn root_handler() -> &'static str {
     "Hello from the timesheet backend!"
 }
 
-// POST /entries — insert one row, return it (now with id and created_at).
+// ----- Employee handlers -----
+
+async fn create_employee(
+    State(pool): State<PgPool>,
+    Json(payload): Json<NewEmployee>,
+) -> Result<(StatusCode, Json<Employee>), (StatusCode, String)> {
+    let employee = sqlx::query_as!(
+        Employee,
+        r#"
+        INSERT INTO employees
+            (name, employee_number, email, is_admin, is_salaried, salary)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING
+            id, name, employee_number, email, google_sub,
+            is_admin, is_salaried, salary, created_at
+        "#,
+        payload.name,
+        payload.employee_number,
+        payload.email,
+        payload.is_admin,
+        payload.is_salaried,
+        payload.salary,
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok((StatusCode::CREATED, Json(employee)))
+}
+
+async fn list_employees(
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<Employee>>, (StatusCode, String)> {
+    let employees = sqlx::query_as!(
+        Employee,
+        r#"
+        SELECT
+            id, name, employee_number, email, google_sub,
+            is_admin, is_salaried, salary, created_at
+        FROM employees
+        ORDER BY name
+        "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(employees))
+}
+
+// ----- Time entry handlers -----
+
 async fn create_entry(
     State(pool): State<PgPool>,
-    Json(payload): Json<NewEntry>,
+    Json(payload): Json<NewTimeEntry>,
 ) -> Result<(StatusCode, Json<TimeEntry>), (StatusCode, String)> {
     let entry = sqlx::query_as!(
         TimeEntry,
         r#"
-        INSERT INTO time_entries (user_name, entry_date, hours, description)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, user_name, entry_date, hours, description, created_at
+        INSERT INTO time_entries
+            (employee_id, entry_date, class_name, teacher_room, details, hours)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
         "#,
-        payload.user_name,
+        payload.employee_id,
         payload.entry_date,
+        payload.class_name,
+        payload.teacher_room,
+        payload.details,
         payload.hours,
-        payload.description
     )
     .fetch_one(&pool)
     .await
@@ -87,14 +171,14 @@ async fn create_entry(
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
-// GET /entries — return every row, newest day first.
 async fn list_entries(
     State(pool): State<PgPool>,
 ) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
     let entries = sqlx::query_as!(
         TimeEntry,
         r#"
-        SELECT id, user_name, entry_date, hours, description, created_at
+        SELECT
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
         FROM time_entries
         ORDER BY entry_date DESC, created_at DESC
         "#
