@@ -76,8 +76,12 @@ onMounted(loadEmployees);
 <template>
   <div class="min-h-screen bg-slate-100 py-10 px-4">
     <div class="max-w-2xl mx-auto">
-      <h1 class="text-2xl font-bold text-slate-800 mb-6">Timesheet</h1>
-
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-slate-800">Timesheet</h1>
+        <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">
+          Admin →
+        </NuxtLink>
+      </div>
       <div class="bg-white rounded-2xl shadow p-6 mb-6">
         <label class="block text-sm font-medium text-slate-600 mb-1">Logged in as</label>
         <select v-model.number="selectedEmployeeId"

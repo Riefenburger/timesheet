@@ -1,0 +1,117 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO time_entries\n            (employee_id, entry_date, class_name, teacher_room, details, hours)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "employee_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "employee_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "entry_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "entry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "class_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "class_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "teacher_room",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "teacher_room"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "details",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "details"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "hours"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Text",
+        "Text",
+        "Text",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "daa5353d86a6b1a11672aca4272ff4e21137af2f97824abe10de85f19326321d"
+}

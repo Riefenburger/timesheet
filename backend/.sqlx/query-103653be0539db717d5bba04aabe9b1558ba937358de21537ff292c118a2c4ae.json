@@ -1,0 +1,129 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, is_admin, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            is_admin, is_salaried, salary, created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "employee_number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "employee_number"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "google_sub",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "google_sub"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_admin",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "is_admin"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "is_salaried",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "is_salaried"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "salary",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "salary"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "103653be0539db717d5bba04aabe9b1558ba937358de21537ff292c118a2c4ae"
+}

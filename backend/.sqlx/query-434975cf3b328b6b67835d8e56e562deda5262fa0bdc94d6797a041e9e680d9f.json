@@ -1,0 +1,134 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            t.id,\n            t.employee_id,\n            e.name           AS employee_name,\n            e.employee_number AS employee_number,\n            t.entry_date,\n            t.class_name,\n            t.teacher_room,\n            t.details,\n            t.hours,\n            t.created_at\n        FROM time_entries t\n        JOIN employees e ON e.id = t.employee_id\n        ORDER BY e.name, t.entry_date DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "employee_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "employee_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "employee_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "employee_number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "employee_number"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "entry_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "entry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "class_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "class_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "teacher_room",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "teacher_room"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "details",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "details"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "hours"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "434975cf3b328b6b67835d8e56e562deda5262fa0bdc94d6797a041e9e680d9f"
+}
