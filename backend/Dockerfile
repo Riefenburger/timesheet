@@ -17,7 +17,9 @@ RUN cargo build --release && rm -rf src
 # Now copy the real source and the offline query cache, and build for real.
 COPY src ./src
 COPY .sqlx ./.sqlx
-RUN cargo build --release
+# Remove the dummy-build artifacts so cargo recompiles the real main.rs.
+RUN rm -f target/release/timesheet-backend target/release/deps/timesheet_backend* \
+    && cargo build --release
 
 # ===== Stage 2: runtime =====
 # Slim image with just enough to run the binary. No compiler, no cargo.
