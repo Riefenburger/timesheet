@@ -1,5 +1,5 @@
 <script setup>
-const ADMIN_ID = 3; // STUB admin identity
+const ADMIN_ID = 1; // STUB admin identity
 
 const FIELDS = [
   "regular_hours", "overtime_hours", "other_earn",
