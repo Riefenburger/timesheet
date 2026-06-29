@@ -29,8 +29,11 @@ function snapshot(row) {
 async function loadTotals() {
   loading.value = true;
   error.value = null;
-  // collapse any open rows when reloading a period
+  // reset all per-row expand state when reloading a period, so cached
+  // sessions from a previous period can't leak into this one
   for (const k of Object.keys(expanded)) delete expanded[k];
+  for (const k of Object.keys(sessions)) delete sessions[k];
+  for (const k of Object.keys(sessionsLoading)) delete sessionsLoading[k];
   try {
     const data = await $fetch("/api/admin/totals", {
       headers: { "X-Employee-Id": String(ADMIN_ID) },
