@@ -29,6 +29,21 @@ pub struct TimeEntry {
     created_at: DateTime<Utc>,
 }
 
+#[derive(Serialize)]
+pub struct AdminTimeEntry {
+    id: i64,
+    employee_id: i64,
+    employee_name: String,
+    employee_number: String,
+    entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    hours: Decimal,
+    created_at: DateTime<Utc>,
+}
+
 pub async fn create_entry(
     State(pool): State<PgPool>,
     current: CurrentEmployee,
@@ -79,18 +94,28 @@ pub async fn list_entries(
     Ok(Json(entries))
 }
 
-// Get /admin/entries - every employee's entries. Admin-gated.
+// GET /admin/entries — every employee's entries, WITH their name. Admin-gated.
 pub async fn list_all_entries(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
-) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<AdminTimeEntry>>, (StatusCode, String)> {
     let entries = sqlx::query_as!(
-        TimeEntry,
+        AdminTimeEntry,
         r#"
         SELECT
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
-        FROM time_entries
-        ORDER BY entry_date DESC, created_at DESC
+            t.id,
+            t.employee_id,
+            e.name           AS employee_name,
+            e.employee_number AS employee_number,
+            t.entry_date,
+            t.class_name,
+            t.teacher_room,
+            t.details,
+            t.hours,
+            t.created_at
+        FROM time_entries t
+        JOIN employees e ON e.id = t.employee_id
+        ORDER BY e.name, t.entry_date DESC
         "#
     )
     .fetch_all(&pool)
