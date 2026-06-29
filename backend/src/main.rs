@@ -1,3 +1,4 @@
+mod auth;
 mod employees;
 mod entries;
 

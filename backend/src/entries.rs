@@ -4,9 +4,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
+use crate::auth::CurrentEmployee;
+
 #[derive(Deserialize)]
 pub struct NewTimeEntry {
-    employee_id: i64,
     entry_date: NaiveDate,
     class_name: String,
     teacher_room: String,
@@ -30,6 +31,7 @@ pub struct TimeEntry {
 
 pub async fn create_entry(
     State(pool): State<PgPool>,
+    current: CurrentEmployee,
     Json(payload): Json<NewTimeEntry>,
 ) -> Result<(StatusCode, Json<TimeEntry>), (StatusCode, String)> {
     let entry = sqlx::query_as!(
@@ -41,7 +43,7 @@ pub async fn create_entry(
         RETURNING
             id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
         "#,
-        payload.employee_id,
+        current.id,
         payload.entry_date,
         payload.class_name,
         payload.teacher_room,
@@ -57,6 +59,7 @@ pub async fn create_entry(
 
 pub async fn list_entries(
     State(pool): State<PgPool>,
+    current: CurrentEmployee,
 ) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
     let entries = sqlx::query_as!(
         TimeEntry,
@@ -64,8 +67,10 @@ pub async fn list_entries(
         SELECT
             id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
         FROM time_entries
+        WHERE employee_id = $1
         ORDER BY entry_date DESC, created_at DESC
-        "#
+        "#,
+        current.id
     )
     .fetch_all(&pool)
     .await
