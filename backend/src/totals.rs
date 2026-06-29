@@ -64,6 +64,8 @@ pub struct EmployeePeriodTotals {
     employee_id: i64,
     employee_name: String,
     employee_number: String,
+    #[serde(with = "rust_decimal::serde::float_option")]
+    logged_hours: Option<Decimal>,
     totals_id: Option<i64>,
     #[serde(with = "rust_decimal::serde::float_option")]
     regular_hours: Option<Decimal>,
@@ -79,7 +81,8 @@ pub struct EmployeePeriodTotals {
     sick_hours: Option<Decimal>,
 }
 
-// GET /admin/totals?period_start=…&period_end=… — every employee, totals or blanks.
+// GET /admin/totals?period_start=…&period_end=… — every employee, their saved
+// totals (or blanks), plus the live sum of their logged entries for the period.
 pub async fn list_period_totals(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
@@ -92,6 +95,7 @@ pub async fn list_period_totals(
             e.id               AS "employee_id!",
             e.name             AS "employee_name!",
             e.employee_number  AS "employee_number!",
+            logged.total       AS "logged_hours?",
             t.id               AS "totals_id?",
             t.regular_hours    AS "regular_hours?",
             t.overtime_hours   AS "overtime_hours?",
@@ -104,6 +108,12 @@ pub async fn list_period_totals(
             ON t.employee_id = e.id
             AND t.period_start = $1
             AND t.period_end = $2
+        LEFT JOIN (
+            SELECT employee_id, SUM(hours) AS total
+            FROM time_entries
+            WHERE entry_date BETWEEN $1 AND $2
+            GROUP BY employee_id
+        ) logged ON logged.employee_id = e.id
         ORDER BY e.name
         "#,
         period.period_start,
