@@ -26,6 +26,7 @@ async fn main() {
         .route("/admin/entries", get(entries::list_all_entries))
         .route("/admin/totals", get(totals::list_period_totals).post(totals::upsert_totals))
         .route("/admin/employees/{id}/entries", get(entries::list_employee_entries))
+        .route("/admin/totals/export", get(totals::export_totals))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

@@ -154,6 +154,31 @@ async function saveAll() {
   }
 }
 
+// Download the period's totals as a CSV file.
+async function exportCsv() {
+  error.value = null;
+  try {
+    // Fetch the raw file bytes (a "blob"), not parsed JSON.
+    const blob = await $fetch("/api/admin/totals/export", {
+      headers: { "X-Employee-Id": String(ADMIN_ID) },
+      query: { period_start: periodStart.value, period_end: periodEnd.value },
+      responseType: "blob",
+    });
+
+    // Turn the blob into a temporary URL and click an invisible link to download it.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `timesheet_${periodStart.value}_to_${periodEnd.value}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    error.value = "Could not export — are you an admin?";
+  }
+}
+
 onMounted(loadTotals);
 </script>
 
@@ -183,6 +208,10 @@ onMounted(loadTotals);
           Load period
         </button>
         <div class="flex-1"></div>
+        <button @click="exportCsv"
+          class="bg-white text-slate-700 border border-slate-300 rounded-lg px-4 py-2 font-medium hover:bg-slate-50">
+          Export CSV
+        </button>
         <button @click="saveAll" :disabled="dirtyRows.length === 0 || saving"
           class="bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50">
           {{ saving ? "Saving…" : `Save all (${dirtyRows.length})` }}

@@ -1,6 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Query, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::Response,
     Json,
 };
 use chrono::{DateTime, NaiveDate, Utc};
@@ -168,4 +170,80 @@ pub async fn upsert_totals(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(totals))
+}
+
+// GET /admin/totals/export?period_start=…&period_end=… — CSV download of
+// every employee WITH saved totals for the period. Admin-gated.
+pub async fn export_totals(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Query(period): Query<PeriodQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    // Inner JOIN (not LEFT) → only employees who actually have saved totals.
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            e.employee_number  AS "employee_number!",
+            e.name             AS "employee_name!",
+            t.regular_hours    AS "regular_hours!",
+            t.overtime_hours   AS "overtime_hours!",
+            t.other_earn       AS "other_earn!",
+            t.competition_earn AS "competition_earn!",
+            t.coaching_earn    AS "coaching_earn!",
+            t.sick_hours       AS "sick_hours!"
+        FROM period_category_totals t
+        JOIN employees e ON e.id = t.employee_id
+        WHERE t.period_start = $1 AND t.period_end = $2
+        ORDER BY e.name
+        "#,
+        period.period_start,
+        period.period_end,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Build the CSV into an in-memory buffer.
+    let mut wtr = csv::Writer::from_writer(Vec::new());
+    wtr.write_record(&[
+        "Employee #", "Name", "Regular Hours", "Overtime Hours",
+        "Other $", "Competition $", "Coaching $", "Sick Hours",
+    ])
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    for row in rows {
+        wtr.write_record(&[
+            row.employee_number,
+            row.employee_name,
+            row.regular_hours.to_string(),
+            row.overtime_hours.to_string(),
+            row.other_earn.to_string(),
+            row.competition_earn.to_string(),
+            row.coaching_earn.to_string(),
+            row.sick_hours.to_string(),
+        ])
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    wtr.flush()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let data = wtr
+        .into_inner()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let filename = format!(
+        "timesheet_{}_to_{}.csv",
+        period.period_start, period.period_end
+    );
+
+    // Return the CSV bytes as a downloadable file instead of JSON.
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", filename),
+        )
+        .body(Body::from(data))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
