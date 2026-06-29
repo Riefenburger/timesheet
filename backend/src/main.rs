@@ -3,7 +3,7 @@ mod employees;
 mod entries;
 mod totals;
 
-use axum::{routing::{get, post}, Router};
+use axum::{routing::get, Router};
 use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
@@ -25,6 +25,7 @@ async fn main() {
         .route("/entries", get(entries::list_entries).post(entries::create_entry))
         .route("/admin/entries", get(entries::list_all_entries))
         .route("/admin/totals", get(totals::list_period_totals).post(totals::upsert_totals))
+        .route("/admin/employees/{id}/entries", get(entries::list_employee_entries))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::{State, Path, Query}, http::StatusCode, Json};
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,12 @@ pub struct AdminTimeEntry {
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
     created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct EntryPeriodQuery {
+    period_start: NaiveDate,
+    period_end: NaiveDate,
 }
 
 pub async fn create_entry(
@@ -117,6 +123,35 @@ pub async fn list_all_entries(
         JOIN employees e ON e.id = t.employee_id
         ORDER BY e.name, t.entry_date DESC
         "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(entries))
+}
+
+// GET /admin/employees/:id/entries?period_start=…&period_end=…
+// One employee's sessions within a period. Admin-gated.
+pub async fn list_employee_entries(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Path(employee_id): Path<i64>,
+    Query(period): Query<EntryPeriodQuery>,
+) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
+    let entries = sqlx::query_as!(
+        TimeEntry,
+        r#"
+        SELECT
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
+        FROM time_entries
+        WHERE employee_id = $1
+          AND entry_date BETWEEN $2 AND $3
+        ORDER BY entry_date
+        "#,
+        employee_id,
+        period.period_start,
+        period.period_end,
     )
     .fetch_all(&pool)
     .await
