@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-use crate::auth::CurrentEmployee;
+use crate::auth::{AdminEmployee, CurrentEmployee};
 
 #[derive(Deserialize)]
 pub struct NewTimeEntry {
@@ -71,6 +71,27 @@ pub async fn list_entries(
         ORDER BY entry_date DESC, created_at DESC
         "#,
         current.id
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(entries))
+}
+
+// Get /admin/entries - every employee's entries. Admin-gated.
+pub async fn list_all_entries(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
+    let entries = sqlx::query_as!(
+        TimeEntry,
+        r#"
+        SELECT
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
+        FROM time_entries
+        ORDER BY entry_date DESC, created_at DESC
+        "#
     )
     .fetch_all(&pool)
     .await

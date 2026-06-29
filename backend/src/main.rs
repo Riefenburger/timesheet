@@ -28,6 +28,7 @@ async fn main() {
             "/entries",
             get(entries::list_entries).post(entries::create_entry),
         )
+        .route("/admin/entries", get(entries::list_all_entries))
         .with_state(pool);
     
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
