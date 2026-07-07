@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at\n        FROM time_entries\n        WHERE employee_id = $1\n        ORDER BY entry_date DESC, created_at DESC\n        ",
+  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at\n        FROM time_entries\n        WHERE employee_id = $1\n        ORDER BY entry_date DESC, created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -105,8 +116,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "9b87e98e8c8d8ebfecef40f98b7773ffc8ea8ffd3a64fb8ad57a36ea7d334718"
+  "hash": "4192803d6c73dd85507b48a1085d853e67dec33602f6e6e8a8cb101d1ef91a28"
 }

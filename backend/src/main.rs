@@ -31,6 +31,7 @@ async fn main() {
         .route("/admin/employees/{id}/rates", get(rates::list_rates))
         .route("/admin/rates", post(rates::create_rate))
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
+        .route("/entries/categories", get(entries::my_categories))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

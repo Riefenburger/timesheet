@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            t.id,\n            t.employee_id,\n            e.name           AS employee_name,\n            e.employee_number AS employee_number,\n            t.entry_date,\n            t.class_name,\n            t.teacher_room,\n            t.details,\n            t.hours,\n            t.created_at\n        FROM time_entries t\n        JOIN employees e ON e.id = t.employee_id\n        ORDER BY e.name, t.entry_date DESC\n        ",
+  "query": "\n        SELECT\n            t.id,\n            t.employee_id,\n            e.name           AS employee_name,\n            e.employee_number AS employee_number,\n            t.entry_date,\n            t.class_name,\n            t.teacher_room,\n            t.details,\n            t.hours,\n            t.category,\n            t.created_at\n        FROM time_entries t\n        JOIN employees e ON e.id = t.employee_id\n        ORDER BY e.name, t.entry_date DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -104,6 +104,17 @@
       },
       {
         "ordinal": 9,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -127,8 +138,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "434975cf3b328b6b67835d8e56e562deda5262fa0bdc94d6797a041e9e680d9f"
+  "hash": "c4f2c90805f7a5d5897f6f2bf5be96a3474174065951eb04019d83808187c4d8"
 }

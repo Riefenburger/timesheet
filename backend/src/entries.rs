@@ -14,6 +14,7 @@ pub struct NewTimeEntry {
     details: String,
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
+    category: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -26,6 +27,7 @@ pub struct TimeEntry {
     details: String,
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
+    category: Option<String>,
     created_at: DateTime<Utc>,
 }
 
@@ -41,6 +43,7 @@ pub struct AdminTimeEntry {
     details: String,
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
+    category: Option<String>,
     created_at: DateTime<Utc>,
 }
 
@@ -59,10 +62,10 @@ pub async fn create_entry(
         TimeEntry,
         r#"
         INSERT INTO time_entries
-            (employee_id, entry_date, class_name, teacher_room, details, hours)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (employee_id, entry_date, class_name, teacher_room, details, hours, category)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
         "#,
         current.id,
         payload.entry_date,
@@ -70,6 +73,7 @@ pub async fn create_entry(
         payload.teacher_room,
         payload.details,
         payload.hours,
+        payload.category,
     )
     .fetch_one(&pool)
     .await
@@ -86,7 +90,7 @@ pub async fn list_entries(
         TimeEntry,
         r#"
         SELECT
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
         FROM time_entries
         WHERE employee_id = $1
         ORDER BY entry_date DESC, created_at DESC
@@ -118,6 +122,7 @@ pub async fn list_all_entries(
             t.teacher_room,
             t.details,
             t.hours,
+            t.category,
             t.created_at
         FROM time_entries t
         JOIN employees e ON e.id = t.employee_id
@@ -143,7 +148,7 @@ pub async fn list_employee_entries(
         TimeEntry,
         r#"
         SELECT
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
         FROM time_entries
         WHERE employee_id = $1
           AND entry_date BETWEEN $2 AND $3
@@ -158,4 +163,26 @@ pub async fn list_employee_entries(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(entries))
+}
+
+// GET /entries/categories — which categories the CURRENT employee has rates for.
+// Drives the entry form's category dropdown.
+pub async fn my_categories(
+    State(pool): State<PgPool>,
+    current: CurrentEmployee,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let labels = sqlx::query_scalar!(
+        r#"
+        SELECT DISTINCT label
+        FROM employee_rates
+        WHERE employee_id = $1
+        ORDER BY label
+        "#,
+        current.id
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(labels))
 }

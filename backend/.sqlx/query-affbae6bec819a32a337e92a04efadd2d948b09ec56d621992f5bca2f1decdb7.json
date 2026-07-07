@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, created_at\n        FROM time_entries\n        WHERE employee_id = $1\n          AND entry_date BETWEEN $2 AND $3\n        ORDER BY entry_date\n        ",
+  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at\n        FROM time_entries\n        WHERE employee_id = $1\n          AND entry_date BETWEEN $2 AND $3\n        ORDER BY entry_date\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -107,8 +118,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "4bea2d402e404cb5d080d7544d6b80d0c712c0f0d36b1bd5500dada140d8a3aa"
+  "hash": "affbae6bec819a32a337e92a04efadd2d948b09ec56d621992f5bca2f1decdb7"
 }
