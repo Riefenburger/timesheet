@@ -9,7 +9,8 @@ pub struct NewEmployee {
     name: String,
     employee_number: String,
     email: Option<String>,
-    is_admin: bool,
+    role: String,
+    pay_method: String,
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
@@ -22,7 +23,8 @@ pub struct Employee {
     employee_number: String,
     email: Option<String>,
     google_sub: Option<String>,
-    is_admin: bool,
+    role: String,
+    pay_method: String,
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
@@ -37,16 +39,17 @@ pub async fn create_employee(
         Employee,
         r#"
         INSERT INTO employees
-            (name, employee_number, email, is_admin, is_salaried, salary)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (name, employee_number, email, role, pay_method, is_salaried, salary)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
             id, name, employee_number, email, google_sub,
-            is_admin, is_salaried, salary, created_at
+            role, pay_method, is_salaried, salary, created_at
         "#,
         payload.name,
         payload.employee_number,
         payload.email,
-        payload.is_admin,
+        payload.role,
+        payload.pay_method,
         payload.is_salaried,
         payload.salary,
     )
@@ -65,7 +68,7 @@ pub async fn list_employees(
         r#"
         SELECT
             id, name, employee_number, email, google_sub,
-            is_admin, is_salaried, salary, created_at
+            role, pay_method, is_salaried, salary, created_at
         FROM employees
         ORDER BY name
         "#

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            is_admin, is_salaried, salary, created_at\n        FROM employees\n        ORDER BY name\n        ",
+  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary, created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -60,17 +60,28 @@
       },
       {
         "ordinal": 5,
-        "name": "is_admin",
-        "type_info": "Bool",
+        "name": "role",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "employees",
-            "name": "is_admin"
+            "name": "role"
           }
         }
       },
       {
         "ordinal": 6,
+        "name": "pay_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "pay_method"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -104,7 +115,15 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Numeric"
+      ]
     },
     "nullable": [
       false,
@@ -114,9 +133,10 @@
       true,
       false,
       false,
+      false,
       true,
       false
     ]
   },
-  "hash": "3673d66706172be311f5657dd964633607b4c3dd93776d2b70acb2ba9f24be69"
+  "hash": "c83b6f83954b4345ae96472f90456b87fb3478341e511e6616816774342e7928"
 }

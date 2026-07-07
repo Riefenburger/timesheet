@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, is_admin, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            is_admin, is_salaried, salary, created_at\n        ",
+  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary, created_at\n        FROM employees\n        ORDER BY name\n        ",
   "describe": {
     "columns": [
       {
@@ -60,17 +60,28 @@
       },
       {
         "ordinal": 5,
-        "name": "is_admin",
-        "type_info": "Bool",
+        "name": "role",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "employees",
-            "name": "is_admin"
+            "name": "role"
           }
         }
       },
       {
         "ordinal": 6,
+        "name": "pay_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "pay_method"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -104,14 +115,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Bool",
-        "Bool",
-        "Numeric"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -121,9 +125,10 @@
       true,
       false,
       false,
+      false,
       true,
       false
     ]
   },
-  "hash": "103653be0539db717d5bba04aabe9b1558ba937358de21537ff292c118a2c4ae"
+  "hash": "724b9a81e66fd3cf98e614feedc74ba74aec8d71883f254e5f5c8a30e62a99fb"
 }
