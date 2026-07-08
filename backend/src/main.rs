@@ -3,6 +3,7 @@ mod employees;
 mod entries;
 mod totals;
 mod rates;
+mod pay;
 
 use axum::{routing::{get, post, put, delete}, Router};
 use sqlx::postgres::PgPoolOptions;
@@ -32,6 +33,7 @@ async fn main() {
         .route("/admin/rates", post(rates::create_rate))
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
+        .route("/admin/pay", get(pay::list_pay))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

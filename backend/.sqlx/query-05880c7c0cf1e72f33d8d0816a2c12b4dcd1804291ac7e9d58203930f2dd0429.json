@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT employee_id, category, SUM(hours) AS \"hours!\"\n        FROM time_entries\n        WHERE entry_date BETWEEN $1 AND $2\n        GROUP BY employee_id, category\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "employee_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "employee_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "hours!",
+        "type_info": "Numeric",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "05880c7c0cf1e72f33d8d0816a2c12b4dcd1804291ac7e9d58203930f2dd0429"
+}

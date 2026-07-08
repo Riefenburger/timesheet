@@ -51,6 +51,7 @@ pub struct AdminTimeEntry {
 pub struct EntryPeriodQuery {
     period_start: NaiveDate,
     period_end: NaiveDate,
+    category: Option<String>,
 }
 
 pub async fn create_entry(
@@ -152,14 +153,19 @@ pub async fn list_employee_entries(
         FROM time_entries
         WHERE employee_id = $1
           AND entry_date BETWEEN $2 AND $3
+          AND (
+            $4::text IS NULL
+            OR ($4 = '__uncategorized__' AND category IS NULL)
+            OR category = $4
+          )
         ORDER BY entry_date
         "#,
         employee_id,
         period.period_start,
         period.period_end,
+        period.category,
     )
-    .fetch_all(&pool)
-    .await
+    .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(entries))
