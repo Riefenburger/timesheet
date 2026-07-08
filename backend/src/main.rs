@@ -23,7 +23,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(root_handler))
-        .route("/employees", get(employees::list_employees).post(employees::create_employee))
+        .route("/employees", get(employees::list_employees))
+        .route("/admin/employees", post(employees::create_employee))
         .route("/entries", get(entries::list_entries).post(entries::create_entry))
         .route("/admin/entries", get(entries::list_all_entries))
         .route("/admin/totals", get(totals::list_period_totals).post(totals::upsert_totals))
@@ -34,6 +35,7 @@ async fn main() {
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
         .route("/admin/pay", get(pay::list_pay))
+        .route("/admin/employees/{id}", put(employees::update_employee))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
