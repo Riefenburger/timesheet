@@ -11,6 +11,7 @@ const form = reactive({
   teacher_room: "",
   details: "",
   hours: null,
+  category: null,
 });
 
 // Load the employee list for the "who am I" picker.
@@ -54,6 +55,7 @@ async function addEntry() {
         teacher_room: form.teacher_room,
         details: form.details,
         hours: form.hours,
+        category: form.category,
       },
     });
     form.entry_date = "";
@@ -61,14 +63,35 @@ async function addEntry() {
     form.teacher_room = "";
     form.details = "";
     form.hours = null;
+    form.category = null;
     await loadEntries();
   } catch (e) {
     error.value = "Could not save the entry — check the fields and try again.";
   }
 }
 
+const myCategories = ref([]);
+
+// Load the categories this employee has rates for (drives the entry dropdown).
+async function loadMyCategories() {
+  if (!selectedEmployeeId.value) {
+    myCategories.value = [];
+    return;
+  }
+  try {
+    myCategories.value = await $fetch("/api/entries/categories", {
+      headers: { "X-Employee-Id": String(selectedEmployeeId.value) },
+    });
+  } catch (e) {
+    myCategories.value = [];
+  }
+}
+
 // When you switch who you are, reload that person's entries.
-watch(selectedEmployeeId, loadEntries);
+watch(selectedEmployeeId, () => {
+  loadEntries();
+  loadMyCategories();
+});
 
 onMounted(loadEmployees);
 </script>
@@ -78,9 +101,11 @@ onMounted(loadEmployees);
     <div class="max-w-2xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Timesheet</h1>
-        <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">
-          Admin →
-        </NuxtLink>
+        <div class="flex items-center gap-4">
+          <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">Admin Totals →</NuxtLink>
+          <NuxtLink to="/super-totals" class="text-sm text-slate-500 hover:text-slate-800">Pay →</NuxtLink>
+          <NuxtLink to="/admin-users" class="text-sm text-slate-500 hover:text-slate-800">Employees →</NuxtLink>
+        </div>
       </div>
       <div class="bg-white rounded-2xl shadow p-6 mb-6">
         <label class="block text-sm font-medium text-slate-600 mb-1">Logged in as</label>
@@ -124,6 +149,17 @@ onMounted(loadEmployees);
             <label class="block text-sm font-medium text-slate-600 mb-1">Teach / Dem Details</label>
             <input v-model="form.details" type="text" required
               class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Category</label>
+            <select v-model="form.category"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option :value="null">— none —</option>
+              <option v-for="c in myCategories" :key="c" :value="c" class="capitalize">{{ c }}</option>
+            </select>
+            <p class="text-xs text-slate-400 mt-1">
+              Pick the pay category if you know it — leave as none if unsure.
+            </p>
           </div>
           <button type="submit"
             class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">

@@ -18,7 +18,8 @@ pub struct PeriodQuery {
 pub struct PayLine {
     category: String,
     #[serde(with = "rust_decimal::serde::float")]
-    rate: Decimal,
+    rate: Decimal,       // 0 when no rate is set
+    needs_rate: bool,    // true = category has hours but no rate
     #[serde(with = "rust_decimal::serde::float")]
     regular_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
@@ -36,6 +37,7 @@ pub struct EmployeePay {
     employee_id: i64,
     employee_name: String,
     employee_number: String,
+    pay_method: String,
     pay_lines: Vec<PayLine>,
     #[serde(with = "rust_decimal::serde::float")]
     unpaid_hours: Decimal,
@@ -58,7 +60,7 @@ pub async fn list_pay(
     Query(period): Query<PeriodQuery>,
 ) -> Result<Json<Vec<EmployeePay>>, (StatusCode, String)> {
     let employees = sqlx::query!(
-        r#"SELECT id, name, employee_number FROM employees ORDER BY name"#
+        r#"SELECT id, name, employee_number, pay_method FROM employees ORDER BY name"#
     )
     .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -144,6 +146,7 @@ pub async fn list_pay(
                         pay_lines.push(PayLine {
                             category: cat.clone(),
                             rate: *rate,
+                            needs_rate: false,
                             regular_hours: reg,
                             overtime_hours: ot,
                             sick_hours: sick,
@@ -151,8 +154,39 @@ pub async fn list_pay(
                             subtotal,
                         });
                     }
-                    None => unpaid_hours += line_hours,
+                    None => {
+                        // Category has hours but no rate — its own flagged row.
+                        unpaid_hours += line_hours;
+                        pay_lines.push(PayLine {
+                            category: cat.clone(),
+                            rate: Decimal::ZERO,
+                            needs_rate: true,
+                            regular_hours: reg,
+                            overtime_hours: ot,
+                            sick_hours: sick,
+                            hours: line_hours,
+                            subtotal: Decimal::ZERO,
+                        });
+                    }
                 }
+            }
+        }
+
+        // Add zero-hour rows for any rate the employee has but didn't log hours in.
+        for r in &rate_rows {
+            if r.employee_id != emp.id { continue; }
+            let already = pay_lines.iter().any(|l| l.category == r.label);
+            if !already {
+                pay_lines.push(PayLine {
+                    category: r.label.clone(),
+                    rate: r.amount,
+                    needs_rate: false,
+                    regular_hours: Decimal::ZERO,
+                    overtime_hours: Decimal::ZERO,
+                    sick_hours: Decimal::ZERO,
+                    hours: Decimal::ZERO,
+                    subtotal: Decimal::ZERO,
+                });
             }
         }
 
@@ -162,10 +196,13 @@ pub async fn list_pay(
 
         let total_pay = category_pay + other + competition + coaching;
 
+        pay_lines.sort_by(|a, b| a.category.cmp(&b.category));
+
         result.push(EmployeePay {
             employee_id: emp.id,
             employee_name: emp.name.clone(),
             employee_number: emp.employee_number.clone(),
+            pay_method: emp.pay_method.clone(),
             pay_lines,
             unpaid_hours,
             other_earn: other,
