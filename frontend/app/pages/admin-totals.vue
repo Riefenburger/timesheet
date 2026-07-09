@@ -167,6 +167,114 @@ async function refreshAfterEntryChange(emp) {
   });
 }
 
+// --- Entry menu / edit / add / delete ---
+const openMenuId = ref(null); // which entry's ⋮ menu is open
+
+const showEntryModal = ref(false);
+const entryModalMode = ref("edit"); // "edit" | "add"
+const entryModalEmp = ref(null);    // which employee we're adding/editing for
+const savingModal = ref(false);
+const entryModalError = ref(null);
+
+const entryForm = reactive({
+  id: null,
+  entry_date: "",
+  class_name: "",
+  teacher_room: "",
+  details: "",
+  hours: null,
+  category: null,
+  type: "regular",
+});
+
+function toggleMenu(id) {
+  openMenuId.value = openMenuId.value === id ? null : id;
+}
+
+function openEditEntry(emp, s) {
+  entryModalMode.value = "edit";
+  entryModalEmp.value = emp;
+  entryForm.id = s.id;
+  entryForm.entry_date = s.entry_date;
+  entryForm.class_name = s.class_name;
+  entryForm.teacher_room = s.teacher_room;
+  entryForm.details = s.details;
+  entryForm.hours = Number(s.hours);
+  entryForm.category = s.category;
+  entryForm.type = s.type;
+  entryModalError.value = null;
+  openMenuId.value = null;
+  showEntryModal.value = true;
+}
+
+function openAddEntry(emp) {
+  entryModalMode.value = "add";
+  entryModalEmp.value = emp;
+  entryForm.id = null;
+  entryForm.entry_date = start.value; // default to the period's start date
+  entryForm.class_name = "";
+  entryForm.teacher_room = "";
+  entryForm.details = "";
+  entryForm.hours = null;
+  entryForm.category = null;
+  entryForm.type = "regular";
+  entryModalError.value = null;
+  showEntryModal.value = true;
+}
+
+function closeEntryModal() {
+  showEntryModal.value = false;
+  entryModalError.value = null;
+}
+
+async function saveEntryModal() {
+  entryModalError.value = null;
+  if (!entryForm.entry_date || entryForm.hours === null || Number(entryForm.hours) <= 0) {
+    entryModalError.value = "Date and a positive number of hours are required.";
+    return;
+  }
+  const body = {
+    entry_date: entryForm.entry_date,
+    class_name: entryForm.class_name,
+    teacher_room: entryForm.teacher_room,
+    details: entryForm.details,
+    hours: Number(entryForm.hours),
+    category: entryForm.category === "" ? null : entryForm.category,
+    type: entryForm.type,
+  };
+  savingModal.value = true;
+  try {
+    if (entryModalMode.value === "add") {
+      await $fetch("/api/admin/entries", {
+        method: "POST", headers,
+        body: { employee_id: entryModalEmp.value.employee_id, ...body },
+      });
+    } else {
+      await $fetch(`/api/admin/entries/${entryForm.id}`, { method: "PUT", headers, body });
+    }
+    closeEntryModal();
+    await refreshAfterEntryChange(entryModalEmp.value);
+  } catch (e) {
+    entryModalError.value = (e && e.data) ? String(e.data) : "Could not save the entry.";
+  } finally {
+    savingModal.value = false;
+  }
+}
+
+// Delete with a two-step confirm baked into the menu.
+const confirmDeleteId = ref(null);
+function askDelete(id) { confirmDeleteId.value = id; }
+async function doDelete(emp, id) {
+  try {
+    await $fetch(`/api/admin/entries/${id}`, { method: "DELETE", headers });
+    confirmDeleteId.value = null;
+    openMenuId.value = null;
+    await refreshAfterEntryChange(emp);
+  } catch (e) {
+    error.value = "Could not delete that entry.";
+  }
+}
+
 onMounted(loadTotals);
 </script>
 
@@ -307,6 +415,7 @@ onMounted(loadTotals);
                         <th class="px-2 py-1 font-medium">Category</th>
                         <th class="px-2 py-1 font-medium">Type</th>
                         <th class="px-2 py-1 font-medium text-right">Hours</th>
+                        <th class="px-2 py-1 font-medium w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -327,14 +436,94 @@ onMounted(loadTotals);
                           </select>
                         </td>
                         <td class="px-2 py-1 text-right">{{ s.hours }}</td>
+                        <td class="px-2 py-1 relative">
+                          <button @click="toggleMenu(s.id)"
+                            class="text-slate-400 hover:text-slate-700 px-1">⋮</button>
+                          <div v-if="openMenuId === s.id"
+                            class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-slate-200 z-20 w-32 text-left">
+                            <button @click="openEditEntry(emp, s)"
+                              class="block w-full px-3 py-2 text-xs hover:bg-slate-50 text-slate-700">Edit</button>
+                            <template v-if="confirmDeleteId === s.id">
+                              <button @click="doDelete(emp, s.id)"
+                                class="block w-full px-3 py-2 text-xs bg-red-500 text-white hover:bg-red-600">Confirm delete</button>
+                              <button @click="confirmDeleteId = null"
+                                class="block w-full px-3 py-2 text-xs hover:bg-slate-50 text-slate-500">Cancel</button>
+                            </template>
+                            <button v-else @click="askDelete(s.id)"
+                              class="block w-full px-3 py-2 text-xs hover:bg-slate-50 text-red-600">Delete</button>
+                          </div>
+                        </td>
                       </tr>
                     </tbody>
                   </table>
+                  <button @click="openAddEntry(emp)"
+                    class="mt-2 text-xs bg-slate-700 text-white rounded px-3 py-1.5 hover:bg-slate-600">
+                    + Add entry
+                  </button>
                 </td>
               </tr>
             </template>
           </tbody>
         </table>
+      </div>
+    </div>
+    <!-- Add / Edit entry modal -->
+    <div v-if="showEntryModal"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
+      @click.self="closeEntryModal">
+      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
+        <h2 class="text-lg font-semibold text-slate-800 mb-4">
+          {{ entryModalMode === "add" ? "Add Entry" : "Edit Entry" }}
+          <span v-if="entryModalEmp" class="text-sm font-normal text-slate-500">— {{ entryModalEmp.employee_name }}</span>
+        </h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <input v-model="entryForm.entry_date" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Class</label>
+              <input v-model="entryForm.class_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Room</label>
+              <input v-model="entryForm.teacher_room" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Details</label>
+            <input v-model="entryForm.details" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
+              <input v-model.number="entryForm.hours" type="number" step="0.25" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Category</label>
+              <select v-model="entryForm.category" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <option :value="null">— none —</option>
+                <option v-for="c in ['teaching','assisting','office']" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Type</label>
+              <select v-model="entryForm.type" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <option v-for="t in ['regular','overtime','sick']" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </div>
+          </div>
+          <p v-if="entryModalError" class="text-red-600 text-sm">{{ entryModalError }}</p>
+          <div class="flex justify-end gap-3 pt-2">
+            <button @click="closeEntryModal"
+              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button @click="saveEntryModal" :disabled="savingModal"
+              class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+              {{ savingModal ? "Saving…" : "Save" }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
