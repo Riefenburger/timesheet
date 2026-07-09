@@ -26,9 +26,9 @@ pub struct PayLine {
     #[serde(with = "rust_decimal::serde::float")]
     sick_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    hours: Decimal,     // reg + ot + sick
+    hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    subtotal: Decimal,  // hours * rate
+    subtotal: Decimal,
 }
 
 #[derive(Serialize)]
@@ -38,7 +38,7 @@ pub struct EmployeePay {
     employee_number: String,
     pay_lines: Vec<PayLine>,
     #[serde(with = "rust_decimal::serde::float")]
-    unpaid_hours: Decimal, // hours in categories with no rate (incl. uncategorized)
+    unpaid_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     other_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
@@ -63,12 +63,16 @@ pub async fn list_pay(
     .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Saved per-category hours for the period.
-    let hours = sqlx::query!(
+    // Hours summed per employee, category, type — from entries.
+    let sums = sqlx::query!(
         r#"
-        SELECT employee_id, category, regular_hours, overtime_hours, sick_hours
-        FROM category_hours
-        WHERE period_start = $1 AND period_end = $2
+        SELECT employee_id,
+               COALESCE(category, 'uncategorized') AS "category!",
+               type AS "type!",
+               SUM(hours) AS "hours!"
+        FROM time_entries
+        WHERE entry_date BETWEEN $1 AND $2
+        GROUP BY employee_id, COALESCE(category, 'uncategorized'), type
         "#,
         period.period_start, period.period_end,
     )
@@ -97,11 +101,20 @@ pub async fn list_pay(
         rate_map.insert((r.employee_id, r.label.clone()), r.amount);
     }
 
-    let mut hours_map: HashMap<i64, Vec<(String, Decimal, Decimal, Decimal)>> = HashMap::new();
-    for h in &hours {
-        hours_map.entry(h.employee_id).or_default().push((
-            h.category.clone(), h.regular_hours, h.overtime_hours, h.sick_hours,
-        ));
+    // employee_id -> category -> (regular, overtime, sick)
+    let mut cat_map: HashMap<i64, HashMap<String, (Decimal, Decimal, Decimal)>> = HashMap::new();
+    for s in &sums {
+        let entry = cat_map
+            .entry(s.employee_id)
+            .or_default()
+            .entry(s.category.clone())
+            .or_insert((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
+        match s.r#type.as_str() {
+            "regular" => entry.0 += s.hours,
+            "overtime" => entry.1 += s.hours,
+            "sick" => entry.2 += s.hours,
+            _ => {}
+        }
     }
 
     let mut dollar_map: HashMap<i64, (Decimal, Decimal, Decimal)> = HashMap::new();
@@ -116,9 +129,12 @@ pub async fn list_pay(
         let mut total_hours = Decimal::ZERO;
         let mut category_pay = Decimal::ZERO;
 
-        if let Some(rows) = hours_map.get(&emp.id) {
-            for (cat, reg, ot, sick) in rows {
-                let line_hours = *reg + *ot + *sick;
+        if let Some(cats) = cat_map.get(&emp.id) {
+            let mut keys: Vec<&String> = cats.keys().collect();
+            keys.sort();
+            for cat in keys {
+                let (reg, ot, sick) = cats[cat];
+                let line_hours = reg + ot + sick;
                 total_hours += line_hours;
 
                 match rate_map.get(&(emp.id, cat.clone())) {
@@ -128,14 +144,13 @@ pub async fn list_pay(
                         pay_lines.push(PayLine {
                             category: cat.clone(),
                             rate: *rate,
-                            regular_hours: *reg,
-                            overtime_hours: *ot,
-                            sick_hours: *sick,
+                            regular_hours: reg,
+                            overtime_hours: ot,
+                            sick_hours: sick,
                             hours: line_hours,
                             subtotal,
                         });
                     }
-                    // No rate (includes 'uncategorized') → unpaid.
                     None => unpaid_hours += line_hours,
                 }
             }
@@ -145,7 +160,6 @@ pub async fn list_pay(
             .get(&emp.id).copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
 
-        pay_lines.sort_by(|a, b| a.category.cmp(&b.category));
         let total_pay = category_pay + other + competition + coaching;
 
         result.push(EmployeePay {

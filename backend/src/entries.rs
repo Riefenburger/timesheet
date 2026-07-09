@@ -54,6 +54,41 @@ pub struct EntryPeriodQuery {
     category: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateEntryClassification {
+    category: Option<String>,
+    #[serde(rename = "type")]
+    entry_type: String,
+}
+
+// PATCH /admin/entries/:id — change an entry's category and/or type. Admin-gated.
+pub async fn update_entry_classification(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Path(entry_id): Path<i64>,
+    Json(payload): Json<UpdateEntryClassification>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE time_entries
+        SET category = $1, type = $2
+        WHERE id = $3
+        "#,
+        payload.category,
+        payload.entry_type,
+        entry_id,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn create_entry(
     State(pool): State<PgPool>,
     current: CurrentEmployee,
