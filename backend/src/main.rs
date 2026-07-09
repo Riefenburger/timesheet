@@ -26,7 +26,9 @@ async fn main() {
         .route("/employees", get(employees::list_employees))
         .route("/admin/employees", post(employees::create_employee))
         .route("/entries", get(entries::list_entries).post(entries::create_entry))
-        .route("/admin/entries", get(entries::list_all_entries))
+        .route("/admin/entries", get(entries::list_all_entries).post(entries::admin_create_entry))
+        .route("/admin/entries/{id}", axum::routing::put(entries::admin_edit_entry).delete(entries::admin_delete_entry))
+        .route("/admin/employees/{id}", put(employees::update_employee))
         .route("/admin/dollar-totals", post(totals::upsert_dollar_totals))
         .route("/admin/employees/{id}/entries", get(entries::list_employee_entries))
         .route("/admin/employees/{id}/rates", get(rates::list_rates))
@@ -34,8 +36,6 @@ async fn main() {
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
         .route("/admin/pay", get(pay::list_pay))
-        .route("/admin/entries/{id}", axum::routing::patch(entries::update_entry_classification))
-        .route("/admin/employees/{id}", put(employees::update_employee))
         .route("/admin/totals", get(totals::list_totals))
         .with_state(pool);
 

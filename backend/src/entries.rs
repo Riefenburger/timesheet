@@ -55,25 +55,100 @@ pub struct EntryPeriodQuery {
 }
 
 #[derive(Deserialize)]
-pub struct UpdateEntryClassification {
+pub struct AdminEditEntry {
+    entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    hours: Decimal,
     category: Option<String>,
     #[serde(rename = "type")]
     entry_type: String,
 }
 
-// PATCH /admin/entries/:id — change an entry's category and/or type. Admin-gated.
-pub async fn update_entry_classification(
+#[derive(Deserialize)]
+pub struct AdminNewEntry {
+    employee_id: i64,
+    entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    hours: Decimal,
+    category: Option<String>,
+    #[serde(rename = "type")]
+    entry_type: String,
+}
+
+// POST /admin/entries — admin adds an entry for a specific employee. Admin-gated.
+pub async fn admin_create_entry(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Json(payload): Json<AdminNewEntry>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query!(
+        r#"
+        INSERT INTO time_entries
+            (employee_id, entry_date, class_name, teacher_room, details, hours, category, type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        payload.employee_id,
+        payload.entry_date,
+        payload.class_name,
+        payload.teacher_room,
+        payload.details,
+        payload.hours,
+        payload.category,
+        payload.entry_type,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// DELETE /admin/entries/:id — remove an entry. Admin-gated.
+pub async fn admin_delete_entry(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
     Path(entry_id): Path<i64>,
-    Json(payload): Json<UpdateEntryClassification>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let result = sqlx::query!(
+        "DELETE FROM time_entries WHERE id = $1",
+        entry_id
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// PUT /admin/entries/:id — edit any field of an entry. Admin-gated.
+pub async fn admin_edit_entry(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Path(entry_id): Path<i64>,
+    Json(payload): Json<AdminEditEntry>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let result = sqlx::query!(
         r#"
         UPDATE time_entries
-        SET category = $1, type = $2
-        WHERE id = $3
+        SET entry_date = $1, class_name = $2, teacher_room = $3,
+            details = $4, hours = $5, category = $6, type = $7
+        WHERE id = $8
         "#,
+        payload.entry_date,
+        payload.class_name,
+        payload.teacher_room,
+        payload.details,
+        payload.hours,
         payload.category,
         payload.entry_type,
         entry_id,
