@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO time_entries\n            (employee_id, entry_date, class_name, teacher_room, details, hours, category)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at\n        ",
+  "query": "\n        INSERT INTO time_entries\n            (employee_id, entry_date, class_name, teacher_room, details, hours, category)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,\n            type AS \"entry_type!\",\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,17 @@
       },
       {
         "ordinal": 8,
+        "name": "entry_type!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "type"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -123,8 +134,9 @@
       false,
       false,
       true,
+      false,
       false
     ]
   },
-  "hash": "b595afb0ca472aa59bd8c8d5e990b0946d9f3611cf555577a69a09b895639f16"
+  "hash": "973589b376ca0e6157ad22d051dda9c6439db3d6a7612ae84f9fc42acec0fa51"
 }

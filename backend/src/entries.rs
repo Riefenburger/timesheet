@@ -28,6 +28,8 @@ pub struct TimeEntry {
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
     category: Option<String>,
+    #[serde(rename = "type")]
+    entry_type: String,
     created_at: DateTime<Utc>,
 }
 
@@ -176,7 +178,9 @@ pub async fn create_entry(
             (employee_id, entry_date, class_name, teacher_room, details, hours, category)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
+            type AS "entry_type!",
+            created_at
         "#,
         current.id,
         payload.entry_date,
@@ -201,7 +205,9 @@ pub async fn list_entries(
         TimeEntry,
         r#"
         SELECT
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
+            type AS "entry_type",
+            created_at
         FROM time_entries
         WHERE employee_id = $1
         ORDER BY entry_date DESC, created_at DESC
@@ -259,7 +265,9 @@ pub async fn list_employee_entries(
         TimeEntry,
         r#"
         SELECT
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
+            type AS "entry_type!",
+            created_at
         FROM time_entries
         WHERE employee_id = $1
           AND entry_date BETWEEN $2 AND $3

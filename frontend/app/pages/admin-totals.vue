@@ -120,6 +120,53 @@ function changePeriod(fn) {
   loadTotals();
 }
 
+const CATEGORY_OPTIONS = ["teaching", "assisting", "office"];
+const TYPE_OPTIONS = ["regular", "overtime", "sick"];
+
+const savingEntry = ref(null); // entry id currently saving
+
+// Save an entry's full state (we send all fields; dropdowns changed one).
+async function saveEntry(emp, entry) {
+  savingEntry.value = entry.id;
+  try {
+    await $fetch(`/api/admin/entries/${entry.id}`, {
+      method: "PUT",
+      headers,
+      body: {
+        entry_date: entry.entry_date,
+        class_name: entry.class_name,
+        teacher_room: entry.teacher_room,
+        details: entry.details,
+        hours: Number(entry.hours),
+        category: entry.category === "" ? null : entry.category,
+        type: entry.type,
+      },
+    });
+    // Refresh this employee's sessions and the period totals.
+    await refreshAfterEntryChange(emp);
+  } catch (e) {
+    error.value = "Could not save that change.";
+  } finally {
+    savingEntry.value = null;
+  }
+}
+
+// Re-fetch the period totals (updates header rollups) and this employee's sessions.
+async function refreshAfterEntryChange(emp) {
+  // Reload the whole period so header sums reflect the change.
+  const updated = await $fetch("/api/admin/totals", {
+    headers,
+    query: { period_start: start.value, period_end: end.value },
+  });
+  employees.value = updated;
+  // Reload this employee's drill-down sessions.
+  delete sessions[emp.employee_id];
+  sessions[emp.employee_id] = await $fetch(`/api/admin/employees/${emp.employee_id}/entries`, {
+    headers,
+    query: { period_start: start.value, period_end: end.value },
+  });
+}
+
 onMounted(loadTotals);
 </script>
 
@@ -258,16 +305,27 @@ onMounted(loadTotals);
                         <th class="px-2 py-1 font-medium">Room</th>
                         <th class="px-2 py-1 font-medium">Details</th>
                         <th class="px-2 py-1 font-medium">Category</th>
+                        <th class="px-2 py-1 font-medium">Type</th>
                         <th class="px-2 py-1 font-medium text-right">Hours</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="s in sessions[emp.employee_id]" :key="s.id" class="text-slate-600">
-                        <td class="px-2 py-1">{{ s.entry_date }}</td>
+                        <td class="px-2 py-1 whitespace-nowrap">{{ s.entry_date }}</td>
                         <td class="px-2 py-1">{{ s.class_name }}</td>
                         <td class="px-2 py-1">{{ s.teacher_room }}</td>
                         <td class="px-2 py-1">{{ s.details }}</td>
-                        <td class="px-2 py-1 capitalize">{{ s.category || "—" }}</td>
+                        <td class="px-2 py-1 capitalize text-slate-500">{{ s.category || "—" }}</td>
+                        <td class="px-2 py-1">
+                          <select v-model="s.type" @change="saveEntry(emp, s)"
+                            :disabled="savingEntry === s.id"
+                            :class="['rounded border px-1 py-0.5 text-xs',
+                              s.type === 'overtime' ? 'border-amber-400 text-amber-700' :
+                              s.type === 'sick' ? 'border-purple-400 text-purple-700' :
+                              'border-slate-300']">
+                            <option v-for="t in TYPE_OPTIONS" :key="t" :value="t">{{ t }}</option>
+                          </select>
+                        </td>
                         <td class="px-2 py-1 text-right">{{ s.hours }}</td>
                       </tr>
                     </tbody>

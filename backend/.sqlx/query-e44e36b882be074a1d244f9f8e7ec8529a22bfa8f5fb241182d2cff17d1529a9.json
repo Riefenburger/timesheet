@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category, created_at\n        FROM time_entries\n        WHERE employee_id = $1\n          AND entry_date BETWEEN $2 AND $3\n          AND (\n            $4::text IS NULL\n            OR ($4 = '__uncategorized__' AND category IS NULL)\n            OR category = $4\n          )\n        ORDER BY entry_date\n        ",
+  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,\n            type AS \"entry_type\",\n            created_at\n        FROM time_entries\n        WHERE employee_id = $1\n        ORDER BY entry_date DESC, created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,17 @@
       },
       {
         "ordinal": 8,
+        "name": "entry_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "type"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -105,10 +116,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Date",
-        "Date",
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
@@ -120,8 +128,9 @@
       false,
       false,
       true,
+      false,
       false
     ]
   },
-  "hash": "5ef6db729e7c5017d541d4af415714d6e3f28050084cdf20573fa89dacb694a1"
+  "hash": "e44e36b882be074a1d244f9f8e7ec8529a22bfa8f5fb241182d2cff17d1529a9"
 }
