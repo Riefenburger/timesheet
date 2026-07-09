@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT employee_id, category, SUM(hours) AS \"hours!\"\n        FROM time_entries\n        WHERE entry_date BETWEEN $1 AND $2\n        GROUP BY employee_id, category\n        ",
+  "query": "\n        SELECT employee_id,\n               COALESCE(category, 'uncategorized') AS \"category!\",\n               SUM(hours) AS \"hours!\"\n        FROM time_entries\n        WHERE entry_date BETWEEN $1 AND $2\n        GROUP BY employee_id, COALESCE(category, 'uncategorized')\n        ",
   "describe": {
     "columns": [
       {
@@ -16,14 +16,9 @@
       },
       {
         "ordinal": 1,
-        "name": "category",
+        "name": "category!",
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "time_entries",
-            "name": "category"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 2,
@@ -40,9 +35,9 @@
     },
     "nullable": [
       false,
-      true,
+      null,
       null
     ]
   },
-  "hash": "05880c7c0cf1e72f33d8d0816a2c12b4dcd1804291ac7e9d58203930f2dd0429"
+  "hash": "78b5875e043fa013982d8670eb5c963e2aed8bd7e3528eb161f8e6ac870379e8"
 }

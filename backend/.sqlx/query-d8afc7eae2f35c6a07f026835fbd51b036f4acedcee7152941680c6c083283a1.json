@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO category_hours\n            (employee_id, period_start, period_end, category,\n             regular_hours, overtime_hours, sick_hours)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        ON CONFLICT (employee_id, period_start, period_end, category)\n        DO UPDATE SET\n            regular_hours  = EXCLUDED.regular_hours,\n            overtime_hours = EXCLUDED.overtime_hours,\n            sick_hours     = EXCLUDED.sick_hours\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d8afc7eae2f35c6a07f026835fbd51b036f4acedcee7152941680c6c083283a1"
+}
