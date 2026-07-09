@@ -82,6 +82,7 @@ pub struct EmployeeTotals {
     employee_id: i64,
     employee_name: String,
     employee_number: String,
+    pay_method: String,
     categories: Vec<CategoryRow>,
     #[serde(with = "rust_decimal::serde::float")]
     other_earn: Decimal,
@@ -99,7 +100,7 @@ pub async fn list_totals(
     Query(period): Query<PeriodQuery>,
 ) -> Result<Json<Vec<EmployeeTotals>>, (StatusCode, String)> {
     let employees = sqlx::query!(
-        r#"SELECT id, name, employee_number FROM employees ORDER BY name"#
+        r#"SELECT id, name, employee_number, pay_method FROM employees ORDER BY name"#
     )
     .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -177,6 +178,7 @@ pub async fn list_totals(
             employee_id: emp.id,
             employee_name: emp.name.clone(),
             employee_number: emp.employee_number.clone(),
+            pay_method: emp.pay_method.clone(),
             categories,
             other_earn: other,
             competition_earn: competition,
