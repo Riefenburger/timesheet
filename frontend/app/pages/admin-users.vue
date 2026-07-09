@@ -1,24 +1,27 @@
 <script setup>
 const SUPER_ADMIN_ID = 2; // STUB: Mark (super_admin) on the dev database
 
+const CATEGORIES = ["teaching", "assisting", "office"];
+
 const employees = ref([]);
 const loading = ref(false);
 const error = ref(null);
 
 const showModal = ref(false);
-const editingId = ref(null); // null = add mode, an id = edit mode
+const editingId = ref(null);
 const saving = ref(false);
 const modalError = ref(null);
 
 const form = reactive({
-  name: "",
-  employee_number: "",
-  email: "",
-  role: "user",
-  pay_method: "payroll",
-  is_salaried: false,
-  salary: null,
+  name: "", employee_number: "", email: "",
+  role: "user", pay_method: "payroll", is_salaried: false, salary: null,
 });
+
+// Rate state (only used in edit mode)
+const rates = ref([]);
+const ratesLoading = ref(false);
+const rateError = ref(null);
+const newRate = reactive({ label: "teaching", amount: null });
 
 const headers = { "X-Employee-Id": String(SUPER_ADMIN_ID) };
 
@@ -39,23 +42,19 @@ async function loadEmployees() {
 }
 
 function resetForm() {
-  form.name = "";
-  form.employee_number = "";
-  form.email = "";
-  form.role = "user";
-  form.pay_method = "payroll";
-  form.is_salaried = false;
-  form.salary = null;
+  form.name = ""; form.employee_number = ""; form.email = "";
+  form.role = "user"; form.pay_method = "payroll"; form.is_salaried = false; form.salary = null;
 }
 
 function openAdd() {
   editingId.value = null;
   resetForm();
+  rates.value = [];
   modalError.value = null;
   showModal.value = true;
 }
 
-function openEdit(emp) {
+async function openEdit(emp) {
   editingId.value = emp.id;
   form.name = emp.name;
   form.employee_number = emp.employee_number;
@@ -66,22 +65,21 @@ function openEdit(emp) {
   form.salary = emp.salary;
   modalError.value = null;
   showModal.value = true;
+  await loadRates(emp.id);
 }
 
 function closeModal() {
   showModal.value = false;
   modalError.value = null;
+  rateError.value = null;
 }
 
 async function saveEmployee() {
   modalError.value = null;
-
-  // Client-side check for the salaried/salary pairing (mirrors the DB constraint).
   if (form.is_salaried && (form.salary === null || form.salary === "" || Number(form.salary) <= 0)) {
     modalError.value = "Salaried employees need a salary amount.";
     return;
   }
-
   const body = {
     name: form.name,
     employee_number: form.employee_number,
@@ -91,7 +89,6 @@ async function saveEmployee() {
     is_salaried: form.is_salaried,
     salary: form.is_salaried ? Number(form.salary) : null,
   };
-
   saving.value = true;
   try {
     if (editingId.value === null) {
@@ -102,14 +99,75 @@ async function saveEmployee() {
     closeModal();
     await loadEmployees();
   } catch (e) {
-    // Backend sends friendly plain-text errors (duplicate number, last super-admin).
     modalError.value = (e && e.data) ? String(e.data) : "Could not save. Check the fields and try again.";
   } finally {
     saving.value = false;
   }
 }
 
+// ---- Rate management (edit mode only, saves immediately) ----
+
+async function loadRates(employeeId) {
+  ratesLoading.value = true;
+  rateError.value = null;
+  try {
+    rates.value = await $fetch(`/api/admin/employees/${employeeId}/rates`, { headers });
+  } catch (e) {
+    rateError.value = "Could not load rates.";
+  } finally {
+    ratesLoading.value = false;
+  }
+}
+
+// Which of the three categories don't yet have a rate (so we don't offer duplicates).
+const availableCategories = computed(() =>
+  CATEGORIES.filter((c) => !rates.value.some((r) => r.label === c))
+);
+
+async function addRate() {
+  rateError.value = null;
+  if (!newRate.label || newRate.amount === null || Number(newRate.amount) <= 0) {
+    rateError.value = "Pick a category and a rate amount.";
+    return;
+  }
+  try {
+    await $fetch("/api/admin/rates", {
+      method: "POST", headers,
+      body: { employee_id: editingId.value, label: newRate.label, amount: Number(newRate.amount) },
+    });
+    newRate.amount = null;
+    await loadRates(editingId.value);
+    newRate.label = availableCategories.value[0] ?? "teaching";
+  } catch (e) {
+    rateError.value = (e && e.data) ? String(e.data) : "Could not add rate.";
+  }
+}
+
+async function saveRate(rate) {
+  rateError.value = null;
+  try {
+    await $fetch(`/api/admin/rates/${rate.id}`, {
+      method: "PUT", headers,
+      body: { label: rate.label, amount: Number(rate.amount) },
+    });
+    await loadRates(editingId.value);
+  } catch (e) {
+    rateError.value = (e && e.data) ? String(e.data) : "Could not update rate.";
+  }
+}
+
+async function deleteRate(rate) {
+  rateError.value = null;
+  try {
+    await $fetch(`/api/admin/rates/${rate.id}`, { method: "DELETE", headers });
+    await loadRates(editingId.value);
+  } catch (e) {
+    rateError.value = "Could not delete rate.";
+  }
+}
+
 onMounted(loadEmployees);
+
 </script>
 
 <template>
@@ -163,11 +221,10 @@ onMounted(loadEmployees);
       </div>
     </div>
 
-    <!-- Add / Edit modal -->
     <div v-if="showModal"
-      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
       @click.self="closeModal">
-      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
         <h2 class="text-lg font-semibold text-slate-800 mb-4">
           {{ editingId === null ? "Add Employee" : "Edit Employee" }}
         </h2>
@@ -175,18 +232,15 @@ onMounted(loadEmployees);
         <form @submit.prevent="saveEmployee" class="space-y-3">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Name</label>
-            <input v-model="form.name" type="text" required
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <input v-model="form.name" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Employee #</label>
-            <input v-model="form.employee_number" type="text" required
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <input v-model="form.employee_number" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Email (optional)</label>
-            <input v-model="form.email" type="email"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <input v-model="form.email" type="email" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div class="flex gap-3">
             <div class="flex-1">
@@ -211,23 +265,51 @@ onMounted(loadEmployees);
           </div>
           <div v-if="form.is_salaried">
             <label class="block text-sm font-medium text-slate-600 mb-1">Salary (per period)</label>
-            <input v-model.number="form.salary" type="number" step="0.01" min="0"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <input v-model.number="form.salary" type="number" step="0.01" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
 
           <p v-if="modalError" class="text-red-600 text-sm">{{ modalError }}</p>
 
           <div class="flex justify-end gap-3 pt-2">
             <button type="button" @click="closeModal"
-              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-              Cancel
-            </button>
+              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
             <button type="submit" :disabled="saving"
               class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
               {{ saving ? "Saving…" : "Save" }}
             </button>
           </div>
         </form>
+
+        <!-- Rates: edit mode only -->
+        <div v-if="editingId !== null" class="mt-6 pt-5 border-t border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-700 mb-3">Pay Rates</h3>
+          <p v-if="ratesLoading" class="text-slate-400 text-sm">Loading rates…</p>
+          <template v-else>
+            <div v-if="rates.length === 0" class="text-slate-400 text-sm mb-3">No rates set yet.</div>
+            <div v-for="rate in rates" :key="rate.id" class="flex items-center gap-2 mb-2">
+              <span class="w-24 text-sm text-slate-700 capitalize">{{ rate.label }}</span>
+              <span class="text-slate-400">$</span>
+              <input v-model.number="rate.amount" type="number" step="0.01" min="0"
+                class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+              <button @click="saveRate(rate)"
+                class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
+              <button @click="deleteRate(rate)"
+                class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 ml-1">Remove</button>
+            </div>
+
+            <div v-if="availableCategories.length > 0" class="flex items-center gap-2 mt-3">
+              <select v-model="newRate.label" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm capitalize">
+                <option v-for="c in availableCategories" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <span class="text-slate-400">$</span>
+              <input v-model.number="newRate.amount" type="number" step="0.01" min="0" placeholder="0.00"
+                class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+              <button @click="addRate"
+                class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
+            </div>
+            <p v-if="rateError" class="text-red-600 text-sm mt-2">{{ rateError }}</p>
+          </template>
+        </div>
       </div>
     </div>
   </div>

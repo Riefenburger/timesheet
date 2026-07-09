@@ -5,7 +5,7 @@ const error = ref(null);
 
 // STUB: hardcoded admin identity for now (employee 3, Amanda).
 // Real auth later supplies this from the session instead.
-const ADMIN_ID = 1;
+const ADMIN_ID = 2;
 
 async function loadAllEntries() {
   loading.value = true;
