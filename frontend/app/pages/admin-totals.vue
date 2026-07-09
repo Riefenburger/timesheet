@@ -1,64 +1,32 @@
 <script setup>
-const ADMIN_ID = 2; // STUB admin identity
+const ADMIN_ID = 3; // STUB: Amanda (admin) on dev
 
-const FIELDS = [
-  "regular_hours", "overtime_hours", "other_earn",
-  "competition_earn", "coaching_earn", "sick_hours",
-];
+const { current, prev, next, goTo, label, start, end, makePeriod, monthName } = usePayPeriod();
 
-const num = (v) => Number(v) || 0;
-
-const periodStart = ref("2026-04-16");
-const periodEnd = ref("2026-04-30");
-const rows = ref([]);
+const employees = ref([]);
 const loading = ref(false);
-const saving = ref(false);
 const error = ref(null);
 
-// Per-employee expand state and their fetched sessions.
-const expanded = reactive({});      // employee_id -> true/false
-const sessions = reactive({});      // employee_id -> array of entries
-const sessionsLoading = reactive({}); // employee_id -> true/false
+const payFilter = ref("both"); // both | check | payroll
+const expanded = reactive({});   // employee_id -> bool
+const sessions = reactive({});   // employee_id -> entries[]
+const sessionsLoading = reactive({});
 
-function snapshot(row) {
-  const s = {};
-  for (const f of FIELDS) s[f] = num(row[f]);
-  return s;
-}
+const showCalendar = ref(false);
+const calYear = ref(current.value.year);
+const calMonth = ref(current.value.month);
+
+const headers = { "X-Employee-Id": String(ADMIN_ID) };
 
 async function loadTotals() {
   loading.value = true;
   error.value = null;
-  // reset all per-row expand state when reloading a period, so cached
-  // sessions from a previous period can't leak into this one
   for (const k of Object.keys(expanded)) delete expanded[k];
   for (const k of Object.keys(sessions)) delete sessions[k];
-  for (const k of Object.keys(sessionsLoading)) delete sessionsLoading[k];
   try {
-    const data = await $fetch("/api/admin/totals", {
-      headers: { "X-Employee-Id": String(ADMIN_ID) },
-      query: { period_start: periodStart.value, period_end: periodEnd.value },
-    });
-    rows.value = data.map((r) => {
-      const isNew = r.totals_id === null;
-      const logged = r.logged_hours ?? 0;
-      const vals = {
-        regular_hours: isNew ? logged : (r.regular_hours ?? 0),
-        overtime_hours: r.overtime_hours ?? 0,
-        other_earn: r.other_earn ?? 0,
-        competition_earn: r.competition_earn ?? 0,
-        coaching_earn: r.coaching_earn ?? 0,
-        sick_hours: r.sick_hours ?? 0,
-      };
-      return {
-        employee_id: r.employee_id,
-        employee_name: r.employee_name,
-        employee_number: r.employee_number,
-        logged_hours: r.logged_hours,
-        entered: r.totals_id !== null,
-        ...vals,
-        _original: { ...vals },
-      };
+    employees.value = await $fetch("/api/admin/totals", {
+      headers,
+      query: { period_start: start.value, period_end: end.value },
     });
   } catch (e) {
     error.value = "Could not load totals — are you an admin?";
@@ -67,116 +35,89 @@ async function loadTotals() {
   }
 }
 
-// Toggle a row open/closed; fetch its sessions the first time it opens.
-async function toggleExpand(row) {
-  const id = row.employee_id;
+// Filtered roster by pay method.
+const visibleEmployees = computed(() => {
+  if (payFilter.value === "both") return employees.value;
+  return employees.value.filter((e) => e.pay_method === payFilter.value);
+});
+
+// Per-employee summed hours across all categories.
+function sumHours(emp, field) {
+  return emp.categories.reduce((acc, c) => acc + Number(c[field]), 0);
+}
+function totalHours(emp) {
+  return emp.categories.reduce(
+    (acc, c) => acc + Number(c.regular_hours) + Number(c.overtime_hours) + Number(c.sick_hours),
+    0
+  );
+}
+
+async function toggleExpand(emp) {
+  const id = emp.employee_id;
   expanded[id] = !expanded[id];
   if (expanded[id] && sessions[id] === undefined) {
     sessionsLoading[id] = true;
     try {
       sessions[id] = await $fetch(`/api/admin/employees/${id}/entries`, {
-        headers: { "X-Employee-Id": String(ADMIN_ID) },
-        query: { period_start: periodStart.value, period_end: periodEnd.value },
+        headers,
+        query: { period_start: start.value, period_end: end.value },
       });
     } catch (e) {
       sessions[id] = [];
-      error.value = "Could not load that employee's sessions.";
     } finally {
       sessionsLoading[id] = false;
     }
   }
 }
 
-function isDirty(row) {
-  return FIELDS.some((f) => num(row[f]) !== num(row._original[f]));
+function dayClasses(day) {
+  const half = day <= 15 ? 1 : 2;
+  const isSelected = isCurrentPeriod(half);
+  if (isSelected) return "bg-emerald-100 text-emerald-700 hover:bg-emerald-200";
+  if (half === 1) return "bg-blue-50 text-blue-700 hover:bg-blue-100";
+  return "bg-amber-50 text-amber-700 hover:bg-amber-100";
 }
 
-const dirtyRows = computed(() => rows.value.filter(isDirty));
+const months = ["January","February","March","April","May","June",
+  "July","August","September","October","November","December"];
 
-function distributedHours(row) {
-  return num(row.regular_hours) + num(row.overtime_hours) + num(row.sick_hours);
-}
+// Years to offer in the dropdown (a few back and forward from now).
+const yearOptions = computed(() => {
+  const y = new Date().getFullYear();
+  const arr = [];
+  for (let i = y - 3; i <= y + 1; i++) arr.push(i);
+  return arr;
+});
 
-function reconcile(row) {
-  if (row.logged_hours === null || row.logged_hours === undefined) return "none";
-  const logged = num(row.logged_hours);
-  const dist = distributedHours(row);
-  if (Math.abs(logged - dist) < 0.001) return "ok";
-  return "mismatch";
-}
+// Build the calendar grid: array of weeks, each a 7-slot array of day numbers (or null).
+const calendarWeeks = computed(() => {
+  const firstDow = new Date(calYear.value, calMonth.value - 1, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(calYear.value, calMonth.value, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+});
 
-function mismatchMessage(row) {
-  const logged = num(row.logged_hours);
-  const dist = distributedHours(row);
-  const diff = (logged - dist).toFixed(2);
-  return `Logged ${logged.toFixed(2)}h, distributed ${dist.toFixed(2)}h (off by ${diff})`;
-}
+const daysInCalMonth = computed(() => new Date(calYear.value, calMonth.value, 0).getDate());
 
-function reloadPeriod() {
-  if (
-    dirtyRows.value.length > 0 &&
-    !confirm("You have unsaved changes that will be lost. Load anyway?")
-  ) {
-    return;
-  }
+function pickPeriod(half) {
+  goTo(calYear.value, calMonth.value, half);
+  showCalendar.value = false;
   loadTotals();
 }
-
-async function saveAll() {
-  const toSave = dirtyRows.value;
-  if (toSave.length === 0) return;
-  saving.value = true;
-  error.value = null;
-  try {
-    for (const row of toSave) {
-      await $fetch("/api/admin/totals", {
-        method: "POST",
-        headers: { "X-Employee-Id": String(ADMIN_ID) },
-        body: {
-          employee_id: row.employee_id,
-          period_start: periodStart.value,
-          period_end: periodEnd.value,
-          regular_hours: num(row.regular_hours),
-          overtime_hours: num(row.overtime_hours),
-          other_earn: num(row.other_earn),
-          competition_earn: num(row.competition_earn),
-          coaching_earn: num(row.coaching_earn),
-          sick_hours: num(row.sick_hours),
-        },
-      });
-      row._original = snapshot(row);
-      row.entered = true;
-    }
-  } catch (e) {
-    error.value = "Could not save all rows — some may not have saved. Try again.";
-  } finally {
-    saving.value = false;
-  }
+function isCurrentPeriod(half) {
+  return current.value.year === calYear.value
+    && current.value.month === calMonth.value
+    && current.value.half === half;
 }
 
-// Download the period's totals as a CSV file.
-async function exportCsv() {
-  error.value = null;
-  try {
-    // Fetch the raw file bytes (a "blob"), not parsed JSON.
-    const blob = await $fetch("/api/admin/totals/export", {
-      headers: { "X-Employee-Id": String(ADMIN_ID) },
-      query: { period_start: periodStart.value, period_end: periodEnd.value },
-      responseType: "blob",
-    });
-
-    // Turn the blob into a temporary URL and click an invisible link to download it.
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `timesheet_${periodStart.value}_to_${periodEnd.value}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    error.value = "Could not export — are you an admin?";
-  }
+function changePeriod(fn) {
+  fn();
+  loadTotals();
 }
 
 onMounted(loadTotals);
@@ -187,35 +128,82 @@ onMounted(loadTotals);
     <div class="max-w-6xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Admin — Period Totals</h1>
-        <NuxtLink to="/admin" class="text-sm text-slate-500 hover:text-slate-800">
-          View entries →
-        </NuxtLink>
+        <div class="flex items-center gap-4">
+          <NuxtLink to="/admin" class="text-sm text-slate-500 hover:text-slate-800">Entries →</NuxtLink>
+          <NuxtLink to="/admin-users" class="text-sm text-slate-500 hover:text-slate-800">Employees →</NuxtLink>
+        </div>
       </div>
 
-      <div class="bg-white rounded-2xl shadow p-6 mb-6 flex items-end gap-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-600 mb-1">Period start</label>
-          <input v-model="periodStart" type="date"
-            class="rounded-lg border border-slate-300 px-3 py-2" />
+      <!-- Period navigation -->
+      <div class="bg-white rounded-2xl shadow p-4 mb-6 flex items-center gap-4">
+        <button @click="changePeriod(prev)"
+          class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">←</button>
+
+        <div class="relative">
+          <button @click="showCalendar = !showCalendar"
+            class="font-medium text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-50">
+            {{ label }} ▾
+          </button>
+
+          <!-- Calendar popover: one continuous month grid, halves color-coded -->
+          <div v-if="showCalendar"
+            class="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-30 w-80">
+            <!-- Month / year quick-nav -->
+            <div class="flex items-center gap-2 mb-3">
+              <select v-model.number="calMonth" class="rounded-lg border border-slate-300 px-2 py-1 text-sm flex-1">
+                <option v-for="(m, i) in months" :key="i" :value="i + 1">{{ m }}</option>
+              </select>
+              <select v-model.number="calYear" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
+                <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
+
+            <!-- Legend -->
+            <div class="flex gap-4 mb-2 text-xs">
+              <button @click="pickPeriod(1)" class="flex items-center gap-1 hover:underline">
+                <span class="w-3 h-3 rounded-sm bg-blue-100 border border-blue-300"></span>
+                <span class="text-blue-600">1–15</span>
+              </button>
+              <button @click="pickPeriod(2)" class="flex items-center gap-1 hover:underline">
+                <span class="w-3 h-3 rounded-sm bg-amber-100 border border-amber-300"></span>
+                <span class="text-amber-600">16–{{ daysInCalMonth }}</span>
+              </button>
+            </div>
+
+            <!-- Day-of-week header -->
+            <div class="grid grid-cols-7 gap-px mb-1">
+              <div v-for="(d, i) in ['S','M','T','W','T','F','S']" :key="i"
+                class="text-center text-xs text-slate-400 font-medium">{{ d }}</div>
+            </div>
+
+            <!-- One continuous month grid -->
+            <div class="grid grid-cols-7 gap-px">
+              <template v-for="(week, wi) in calendarWeeks" :key="wi">
+                <template v-for="(day, di) in week" :key="wi + '-' + di">
+                  <div v-if="day === null"></div>
+                  <button v-else
+                    @click="pickPeriod(day <= 15 ? 1 : 2)"
+                    :class="['text-center text-xs py-1.5 rounded transition',
+                      dayClasses(day)]">
+                    {{ day }}
+                  </button>
+                </template>
+              </template>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-600 mb-1">Period end</label>
-          <input v-model="periodEnd" type="date"
-            class="rounded-lg border border-slate-300 px-3 py-2" />
-        </div>
-        <button @click="reloadPeriod"
-          class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
-          Load period
-        </button>
+
+        <button @click="changePeriod(next)"
+          class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">→</button>
+
         <div class="flex-1"></div>
-        <button @click="exportCsv"
-          class="bg-white text-slate-700 border border-slate-300 rounded-lg px-4 py-2 font-medium hover:bg-slate-50">
-          Export CSV
-        </button>
-        <button @click="saveAll" :disabled="dirtyRows.length === 0 || saving"
-          class="bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50">
-          {{ saving ? "Saving…" : `Save all (${dirtyRows.length})` }}
-        </button>
+
+        <!-- Pay method filter -->
+        <select v-model="payFilter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="both">All employees</option>
+          <option value="payroll">Payroll only</option>
+          <option value="check">Check only</option>
+        </select>
       </div>
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
@@ -227,50 +215,40 @@ onMounted(loadTotals);
             <tr>
               <th class="px-3 py-3 font-medium w-6"></th>
               <th class="px-3 py-3 font-medium">Employee</th>
-              <th class="px-3 py-3 font-medium">Logged</th>
-              <th class="px-3 py-3 font-medium">Regular</th>
-              <th class="px-3 py-3 font-medium">Overtime</th>
-              <th class="px-3 py-3 font-medium">Sick</th>
-              <th class="px-3 py-3 font-medium">Other $</th>
-              <th class="px-3 py-3 font-medium">Comp $</th>
-              <th class="px-3 py-3 font-medium">Coaching $</th>
+              <th class="px-3 py-3 font-medium text-right">Regular</th>
+              <th class="px-3 py-3 font-medium text-right">Overtime</th>
+              <th class="px-3 py-3 font-medium text-right">Sick</th>
+              <th class="px-3 py-3 font-medium text-right">Other $</th>
+              <th class="px-3 py-3 font-medium text-right">Comp $</th>
+              <th class="px-3 py-3 font-medium text-right">Coaching $</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <template v-for="row in rows" :key="row.employee_id">
-              <tr :class="{ 'bg-blue-50': isDirty(row), 'bg-amber-50': reconcile(row) === 'mismatch' }">
-                <td class="px-3 py-2 text-center">
-                  <button @click="toggleExpand(row)"
-                    class="text-slate-400 hover:text-slate-700 w-5 text-2xl leading-none font-mono"
-                    :title="expanded[row.employee_id] ? 'Hide sessions' : 'Show sessions'">
-                    {{ expanded[row.employee_id] ? "▾" : "▸" }}
+            <template v-for="emp in visibleEmployees" :key="emp.employee_id">
+              <tr class="bg-white">
+                <td class="px-3 py-3 text-center">
+                  <button @click="toggleExpand(emp)"
+                    class="text-slate-400 hover:text-slate-700 text-lg leading-none font-mono">
+                    {{ expanded[emp.employee_id] ? "▾" : "▸" }}
                   </button>
                 </td>
-                <td class="px-3 py-2 text-slate-800 whitespace-nowrap">
-                  {{ row.employee_name }}
-                  <span class="text-slate-400">#{{ row.employee_number }}</span>
-                  <span v-if="!row.entered" class="ml-1 text-xs text-amber-500">(new)</span>
-                  <span v-if="isDirty(row)" class="ml-1 text-xs text-blue-500" title="Unsaved">●</span>
-                  <div v-if="reconcile(row) === 'mismatch'" class="text-xs text-amber-600 mt-0.5">
-                    ⚠ {{ mismatchMessage(row) }}
-                  </div>
+                <td class="px-3 py-3 text-slate-800 font-medium whitespace-nowrap">
+                  {{ emp.employee_name }}
+                  <span class="text-slate-400 font-normal">#{{ emp.employee_number }}</span>
+                  <span class="ml-1 text-xs text-slate-400 capitalize">({{ emp.pay_method }})</span>
                 </td>
-                <td class="px-3 py-2 whitespace-nowrap"
-                  :class="reconcile(row) === 'mismatch' ? 'text-amber-700 font-medium' : 'text-slate-500'">
-                  {{ row.logged_hours === null ? "—" : Number(row.logged_hours).toFixed(2) }}
-                </td>
-                <td class="px-3 py-2"><input v-model.number="row.regular_hours" type="number" step="0.25" class="w-20 rounded border border-slate-300 px-2 py-1" /></td>
-                <td class="px-3 py-2"><input v-model.number="row.overtime_hours" type="number" step="0.25" class="w-20 rounded border border-slate-300 px-2 py-1" /></td>
-                <td class="px-3 py-2"><input v-model.number="row.sick_hours" type="number" step="0.25" class="w-20 rounded border border-slate-300 px-2 py-1" /></td>
-                <td class="px-3 py-2"><input v-model.number="row.other_earn" type="number" step="0.01" class="w-24 rounded border border-slate-300 px-2 py-1" /></td>
-                <td class="px-3 py-2"><input v-model.number="row.competition_earn" type="number" step="0.01" class="w-24 rounded border border-slate-300 px-2 py-1" /></td>
-                <td class="px-3 py-2"><input v-model.number="row.coaching_earn" type="number" step="0.01" class="w-24 rounded border border-slate-300 px-2 py-1" /></td>
+                <td class="px-3 py-3 text-right text-slate-800">{{ sumHours(emp, "regular_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-800">{{ sumHours(emp, "overtime_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-800">{{ sumHours(emp, "sick_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-600">{{ Number(emp.other_earn).toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-600">{{ Number(emp.competition_earn).toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-600">{{ Number(emp.coaching_earn).toFixed(2) }}</td>
               </tr>
-              <tr v-if="expanded[row.employee_id]" class="bg-slate-50">
+              <tr v-if="expanded[emp.employee_id]" class="bg-slate-50">
                 <td></td>
-                <td colspan="8" class="px-3 py-3">
-                  <p v-if="sessionsLoading[row.employee_id]" class="text-slate-400 text-xs">Loading sessions…</p>
-                  <p v-else-if="!sessions[row.employee_id] || sessions[row.employee_id].length === 0"
+                <td colspan="7" class="px-3 py-3">
+                  <p v-if="sessionsLoading[emp.employee_id]" class="text-slate-400 text-xs">Loading sessions…</p>
+                  <p v-else-if="!sessions[emp.employee_id] || sessions[emp.employee_id].length === 0"
                     class="text-slate-400 text-xs">No sessions logged this period.</p>
                   <table v-else class="w-full text-xs">
                     <thead class="text-slate-400 text-left">
@@ -279,15 +257,17 @@ onMounted(loadTotals);
                         <th class="px-2 py-1 font-medium">Class</th>
                         <th class="px-2 py-1 font-medium">Room</th>
                         <th class="px-2 py-1 font-medium">Details</th>
+                        <th class="px-2 py-1 font-medium">Category</th>
                         <th class="px-2 py-1 font-medium text-right">Hours</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="s in sessions[row.employee_id]" :key="s.id" class="text-slate-600">
+                      <tr v-for="s in sessions[emp.employee_id]" :key="s.id" class="text-slate-600">
                         <td class="px-2 py-1">{{ s.entry_date }}</td>
                         <td class="px-2 py-1">{{ s.class_name }}</td>
                         <td class="px-2 py-1">{{ s.teacher_room }}</td>
                         <td class="px-2 py-1">{{ s.details }}</td>
+                        <td class="px-2 py-1 capitalize">{{ s.category || "—" }}</td>
                         <td class="px-2 py-1 text-right">{{ s.hours }}</td>
                       </tr>
                     </tbody>
