@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO time_entries\n            (employee_id, entry_date, class_name, teacher_room, details, hours, category)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,\n            type AS \"entry_type!\",\n            created_at\n        ",
+  "query": "\n        INSERT INTO time_entries\n            (employee_id, entry_date, class_name, teacher_room, details, hours,\n             category, type, session_duration, session_count)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, 'regular', $8, $9)\n        RETURNING\n            id, employee_id, entry_date, class_name, teacher_room, details, hours,\n            category, type AS \"entry_type!\", session_duration, session_count, created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -104,6 +104,28 @@
       },
       {
         "ordinal": 9,
+        "name": "session_duration",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "session_duration"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "session_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "session_count"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -122,7 +144,9 @@
         "Text",
         "Text",
         "Numeric",
-        "Text"
+        "Text",
+        "Int4",
+        "Int4"
       ]
     },
     "nullable": [
@@ -135,8 +159,10 @@
       false,
       true,
       false,
+      true,
+      true,
       false
     ]
   },
-  "hash": "973589b376ca0e6157ad22d051dda9c6439db3d6a7612ae84f9fc42acec0fa51"
+  "hash": "4c92693e772c452898b38dfb0669fdc8d8bc55efe9ad9ea9951a744471241c04"
 }

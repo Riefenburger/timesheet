@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,\n            type AS \"entry_type!\",\n            created_at\n        FROM time_entries\n        WHERE employee_id = $1\n          AND entry_date BETWEEN $2 AND $3\n          AND (\n            $4::text IS NULL\n            OR ($4 = '__uncategorized__' AND category IS NULL)\n            OR category = $4\n          )\n        ORDER BY entry_date\n        ",
+  "query": "\n        SELECT\n            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,\n            session_duration, session_count,\n            type AS \"entry_type!\",\n            created_at\n        FROM time_entries\n        WHERE employee_id = $1\n        ORDER BY entry_date DESC, created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,28 @@
       },
       {
         "ordinal": 8,
+        "name": "session_duration",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "session_duration"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "session_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "time_entries",
+            "name": "session_count"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "entry_type!",
         "type_info": "Text",
         "origin": {
@@ -103,7 +125,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -116,10 +138,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Date",
-        "Date",
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
@@ -131,9 +150,11 @@
       false,
       false,
       true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "bc37ffed3495dcc7c58653c1a836b714ad1d4caf930f4231d68ed0b169c4393e"
+  "hash": "d90b57590f9febfc4b61abd0beb67bd5d99feaacf68ba8f8ecf9ba6d666662a3"
 }

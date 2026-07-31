@@ -6,6 +6,30 @@ use sqlx::PgPool;
 
 use crate::auth::{AdminEmployee, CurrentEmployee};
 
+// For private entries, hours are derived from duration × count. For normal
+// entries, the provided hours are used as-is. Returns (hours, duration, count).
+fn resolve_hours(
+    hours: Decimal,
+    session_duration: Option<i32>,
+    session_count: Option<i32>,
+) -> Result<(Decimal, Option<i32>, Option<i32>), String> {
+    match (session_duration, session_count) {
+        (Some(dur), Some(count)) => {
+            if ![20, 30, 45, 60].contains(&dur) {
+                return Err("Invalid session duration.".to_string());
+            }
+            if count <= 0 {
+                return Err("Session count must be positive.".to_string());
+            }
+            // hours = (duration / 60) * count
+            let computed = Decimal::from(dur) / Decimal::from(60) * Decimal::from(count);
+            Ok((computed, Some(dur), Some(count)))
+        }
+        (None, None) => Ok((hours, None, None)),
+        _ => Err("Private sessions need both a duration and a count.".to_string()),
+    }
+}
+
 #[derive(Deserialize)]
 pub struct NewTimeEntry {
     entry_date: NaiveDate,
@@ -15,6 +39,10 @@ pub struct NewTimeEntry {
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
     category: Option<String>,
+    #[serde(default)]
+    session_duration: Option<i32>,
+    #[serde(default)]
+    session_count: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -28,6 +56,10 @@ pub struct TimeEntry {
     #[serde(with = "rust_decimal::serde::float")]
     hours: Decimal,
     category: Option<String>,
+    #[serde(default)]
+    session_duration: Option<i32>,
+    #[serde(default)]
+    session_count: Option<i32>,
     #[serde(rename = "type")]
     entry_type: String,
     created_at: DateTime<Utc>,
@@ -67,6 +99,10 @@ pub struct AdminEditEntry {
     category: Option<String>,
     #[serde(rename = "type")]
     entry_type: String,
+    #[serde(default)]
+    session_duration: Option<i32>,
+    #[serde(default)]
+    session_count: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -81,28 +117,38 @@ pub struct AdminNewEntry {
     category: Option<String>,
     #[serde(rename = "type")]
     entry_type: String,
+    #[serde(default)]
+    session_duration: Option<i32>,
+    #[serde(default)]
+    session_count: Option<i32>,
 }
 
-// POST /admin/entries — admin adds an entry for a specific employee. Admin-gated.
 pub async fn admin_create_entry(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
     Json(payload): Json<AdminNewEntry>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let (hours, duration, count) = resolve_hours(
+        payload.hours, payload.session_duration, payload.session_count,
+    ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
     sqlx::query!(
         r#"
         INSERT INTO time_entries
-            (employee_id, entry_date, class_name, teacher_room, details, hours, category, type)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (employee_id, entry_date, class_name, teacher_room, details, hours,
+             category, type, session_duration, session_count)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         "#,
         payload.employee_id,
         payload.entry_date,
         payload.class_name,
         payload.teacher_room,
         payload.details,
-        payload.hours,
+        hours,
         payload.category,
         payload.entry_type,
+        duration,
+        count,
     )
     .execute(&pool)
     .await
@@ -139,20 +185,27 @@ pub async fn admin_edit_entry(
     Path(entry_id): Path<i64>,
     Json(payload): Json<AdminEditEntry>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let (hours, duration, count) = resolve_hours(
+        payload.hours, payload.session_duration, payload.session_count,
+    ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
     let result = sqlx::query!(
         r#"
         UPDATE time_entries
         SET entry_date = $1, class_name = $2, teacher_room = $3,
-            details = $4, hours = $5, category = $6, type = $7
-        WHERE id = $8
+            details = $4, hours = $5, category = $6, type = $7,
+            session_duration = $8, session_count = $9
+        WHERE id = $10
         "#,
         payload.entry_date,
         payload.class_name,
         payload.teacher_room,
         payload.details,
-        payload.hours,
+        hours,
         payload.category,
         payload.entry_type,
+        duration,
+        count,
         entry_id,
     )
     .execute(&pool)
@@ -171,27 +224,32 @@ pub async fn create_entry(
     current: CurrentEmployee,
     Json(payload): Json<NewTimeEntry>,
 ) -> Result<(StatusCode, Json<TimeEntry>), (StatusCode, String)> {
+    let (hours, duration, count) = resolve_hours(
+        payload.hours, payload.session_duration, payload.session_count,
+    ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
     let entry = sqlx::query_as!(
         TimeEntry,
         r#"
         INSERT INTO time_entries
-            (employee_id, entry_date, class_name, teacher_room, details, hours, category)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (employee_id, entry_date, class_name, teacher_room, details, hours,
+             category, type, session_duration, session_count)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'regular', $8, $9)
         RETURNING
-            id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
-            type AS "entry_type!",
-            created_at
+            id, employee_id, entry_date, class_name, teacher_room, details, hours,
+            category, type AS "entry_type!", session_duration, session_count, created_at
         "#,
         current.id,
         payload.entry_date,
         payload.class_name,
         payload.teacher_room,
         payload.details,
-        payload.hours,
+        hours,
         payload.category,
+        duration,
+        count,
     )
-    .fetch_one(&pool)
-    .await
+    .fetch_one(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(entry)))
@@ -206,7 +264,8 @@ pub async fn list_entries(
         r#"
         SELECT
             id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
-            type AS "entry_type",
+            session_duration, session_count,
+            type AS "entry_type!",
             created_at
         FROM time_entries
         WHERE employee_id = $1
@@ -266,6 +325,7 @@ pub async fn list_employee_entries(
         r#"
         SELECT
             id, employee_id, entry_date, class_name, teacher_room, details, hours, category,
+            session_duration, session_count,
             type AS "entry_type!",
             created_at
         FROM time_entries
