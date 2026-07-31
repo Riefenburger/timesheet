@@ -3,7 +3,6 @@ mod employees;
 mod entries;
 mod totals;
 mod rates;
-mod pay;
 mod categories;
 
 use axum::{routing::{get, post, put}, Router};
@@ -30,17 +29,18 @@ async fn main() {
         .route("/admin/entries", get(entries::list_all_entries).post(entries::admin_create_entry))
         .route("/admin/entries/{id}", axum::routing::put(entries::admin_edit_entry).delete(entries::admin_delete_entry))
         .route("/admin/employees/{id}", put(employees::update_employee))
-        .route("/admin/dollar-totals", post(totals::upsert_dollar_totals))
         .route("/admin/employees/{id}/entries", get(entries::list_employee_entries))
         .route("/admin/employees/{id}/rates", get(rates::list_rates))
         .route("/admin/rates", post(rates::create_rate))
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
-        .route("/admin/pay", get(pay::list_pay))
-        .route("/admin/totals", get(totals::list_totals))
+        // .route("/admin/totals", get(totals::list_totals))
         .route("/categories", get(categories::list_categories))
         .route("/admin/categories", post(categories::create_category))
         .route("/admin/categories/{id}", put(categories::update_category).delete(categories::delete_category))
+        .route("/admin/category-hours", post(totals::upsert_category_hours))
+        .route("/admin/private-counts", post(totals::upsert_private_count))
+        .route("/admin/dollar-totals", post(totals::upsert_dollar_totals))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

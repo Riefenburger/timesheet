@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM category_hours\n            WHERE employee_id = $1 AND period_start = $2 AND period_end = $3\n              AND category = 'private' AND session_duration = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5981762cfabc561399ddc21d4702b2d03d117393a5e62b714770b3832a21ba52"
+}
