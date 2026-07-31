@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT employee_id, category, regular_hours, overtime_hours, sick_hours\n        FROM category_hours\n        WHERE period_start = $1 AND period_end = $2 AND session_duration IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "employee_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "employee_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "regular_hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "regular_hours"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "overtime_hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "overtime_hours"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "sick_hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "sick_hours"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "82123fef8f36b7e4058da7ea1b4533c9718018fce87cb8405c2208c02a8635b5"
+}

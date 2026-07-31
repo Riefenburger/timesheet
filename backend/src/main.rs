@@ -34,7 +34,7 @@ async fn main() {
         .route("/admin/rates", post(rates::create_rate))
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
-        // .route("/admin/totals", get(totals::list_totals))
+        .route("/admin/totals", get(totals::list_totals))
         .route("/categories", get(categories::list_categories))
         .route("/admin/categories", post(categories::create_category))
         .route("/admin/categories/{id}", put(categories::update_category).delete(categories::delete_category))

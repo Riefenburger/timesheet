@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT employee_id, session_duration AS \"session_duration!\", session_count AS \"session_count!\"\n        FROM category_hours\n        WHERE period_start = $1 AND period_end = $2 AND session_duration IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "employee_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "employee_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "session_duration!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "session_duration"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "session_count!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "category_hours",
+            "name": "session_count"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "62b9d2325337a8523d04685762d9787b5eb4e2d61c5ad0eab97f33c0f7256e3b"
+}
