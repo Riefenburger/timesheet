@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT DISTINCT label\n        FROM employee_rates\n        WHERE employee_id = $1\n        ORDER BY label\n        ",
+  "query": "SELECT DISTINCT label FROM employee_rates WHERE employee_id = $1 ORDER BY label",
   "describe": {
     "columns": [
       {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "d5a55357241456912f32105c11949457ea21d957a68ce42cb71e94f502fc9c0d"
+  "hash": "9fc1ce5bbb0818b27049847b7e68573252bf59a4975748c0a1ac9a9d96f62d68"
 }

@@ -349,24 +349,42 @@ pub async fn list_employee_entries(
     Ok(Json(entries))
 }
 
-// GET /entries/categories — which categories the CURRENT employee has rates for.
-// Drives the entry form's category dropdown.
+#[derive(Serialize)]
+pub struct MyCategories {
+    // Normal category names the employee has rates for (e.g. ["office","teaching"]).
+    categories: Vec<String>,
+    // Private durations the employee has rates for (e.g. [20, 30]). Empty if none.
+    private_durations: Vec<i32>,
+}
+
+// GET /entries/categories — which categories (and private durations) the CURRENT
+// employee has rates for. Drives the entry form's category + duration pickers.
 pub async fn my_categories(
     State(pool): State<PgPool>,
     current: CurrentEmployee,
-) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let labels = sqlx::query_scalar!(
-        r#"
-        SELECT DISTINCT label
-        FROM employee_rates
-        WHERE employee_id = $1
-        ORDER BY label
-        "#,
+) -> Result<Json<MyCategories>, (StatusCode, String)> {
+    let labels: Vec<String> = sqlx::query_scalar!(
+        r#"SELECT DISTINCT label FROM employee_rates WHERE employee_id = $1 ORDER BY label"#,
         current.id
     )
-    .fetch_all(&pool)
-    .await
+    .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(labels))
+    // Split private_NN labels out into durations; everything else is a normal category.
+    let mut categories = Vec::new();
+    let mut private_durations = Vec::new();
+    for label in labels {
+        if let Some(rest) = label.strip_prefix("private_") {
+            if let Ok(dur) = rest.parse::<i32>() {
+                if [20, 30, 45, 60].contains(&dur) {
+                    private_durations.push(dur);
+                }
+            }
+        } else {
+            categories.push(label);
+        }
+    }
+    private_durations.sort();
+
+    Ok(Json(MyCategories { categories, private_durations }))
 }
