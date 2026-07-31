@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT employee_id, category, regular_hours, overtime_hours, sick_hours\n        FROM category_hours\n        WHERE period_start = $1 AND period_end = $2 AND session_duration IS NULL\n        ",
+  "query": "\n        SELECT employee_id, category, regular_hours, overtime_hours, sick_hours\n        FROM category_hours\n        WHERE period_start = $1 AND period_end = $2\n          AND session_duration IS NULL AND admin_edited = true\n        ",
   "describe": {
     "columns": [
       {
@@ -73,5 +73,5 @@
       false
     ]
   },
-  "hash": "82123fef8f36b7e4058da7ea1b4533c9718018fce87cb8405c2208c02a8635b5"
+  "hash": "ee8ee594fb3b8ee2eaa12bd563a01ec8733295f932408605d179a63f57907634"
 }

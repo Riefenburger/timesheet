@@ -177,13 +177,14 @@ pub async fn upsert_category_hours(
         r#"
         INSERT INTO category_hours
             (employee_id, period_start, period_end, category,
-             regular_hours, overtime_hours, sick_hours)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+             regular_hours, overtime_hours, sick_hours, admin_edited)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, true)
         ON CONFLICT (employee_id, period_start, period_end, category, session_duration)
         DO UPDATE SET
             regular_hours  = EXCLUDED.regular_hours,
             overtime_hours = EXCLUDED.overtime_hours,
-            sick_hours     = EXCLUDED.sick_hours
+            sick_hours     = EXCLUDED.sick_hours,
+            admin_edited   = true
         "#,
         payload.employee_id,
         payload.period_start,
@@ -239,10 +240,10 @@ pub async fn upsert_private_count(
         r#"
         INSERT INTO category_hours
             (employee_id, period_start, period_end, category,
-             session_duration, session_count)
-        VALUES ($1, $2, $3, 'private', $4, $5)
+             session_duration, session_count, admin_edited)
+        VALUES ($1, $2, $3, 'private', $4, $5, true)
         ON CONFLICT (employee_id, period_start, period_end, category, session_duration)
-        DO UPDATE SET session_count = EXCLUDED.session_count
+        DO UPDATE SET session_count = EXCLUDED.session_count, admin_edited = true
         "#,
         payload.employee_id,
         payload.period_start,
@@ -319,16 +320,17 @@ pub struct CategoryRow {
     overtime_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     sick_hours: Decimal,
-    // Sum of logged entry hours in this category (for the mismatch warning).
     #[serde(with = "rust_decimal::serde::float")]
-    logged_hours: Decimal,
+    logged_hours: Decimal,   // worked hours logged in this category (for mismatch)
+    admin_edited: bool,      // true = stored override; false = computed
 }
 
 #[derive(Serialize)]
 pub struct PrivateRow {
     session_duration: i32,
-    session_count: i32,        // stored/typed count
-    logged_count: i32,         // summed from logged private entries (mismatch)
+    session_count: i32,
+    logged_count: i32,
+    admin_edited: bool,
 }
 
 #[derive(Serialize)]
@@ -354,68 +356,37 @@ pub async fn list_totals(
     _admin: AdminEmployee,
     Query(period): Query<PeriodQuery>,
 ) -> Result<Json<Vec<EmployeeTotals>>, (StatusCode, String)> {
-    // 1. All employees.
+    // All employees.
     let employees = sqlx::query!(
         r#"SELECT id, name, employee_number, pay_method FROM employees ORDER BY name"#
-    )
-    .fetch_all(&pool).await
+    ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 2. Stored normal category hours (non-private rows).
+    // Stored (admin_edited) normal category rows.
     let stored_cats = sqlx::query!(
         r#"
         SELECT employee_id, category, regular_hours, overtime_hours, sick_hours
         FROM category_hours
-        WHERE period_start = $1 AND period_end = $2 AND session_duration IS NULL
+        WHERE period_start = $1 AND period_end = $2
+          AND session_duration IS NULL AND admin_edited = true
         "#,
         period.period_start, period.period_end,
-    )
-    .fetch_all(&pool).await
+    ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 3. Stored private session counts (private rows).
+    // Stored (admin_edited) private rows.
     let stored_privates = sqlx::query!(
         r#"
         SELECT employee_id, session_duration AS "session_duration!", session_count AS "session_count!"
         FROM category_hours
-        WHERE period_start = $1 AND period_end = $2 AND session_duration IS NOT NULL
+        WHERE period_start = $1 AND period_end = $2
+          AND session_duration IS NOT NULL AND admin_edited = true
         "#,
         period.period_start, period.period_end,
-    )
-    .fetch_all(&pool).await
+    ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 4. Logged normal hours per category (non-private entries).
-    let logged_cats = sqlx::query!(
-        r#"
-        SELECT employee_id,
-               COALESCE(category, 'uncategorized') AS "category!",
-               SUM(hours) AS "hours!"
-        FROM time_entries
-        WHERE entry_date BETWEEN $1 AND $2 AND session_duration IS NULL
-        GROUP BY employee_id, COALESCE(category, 'uncategorized')
-        "#,
-        period.period_start, period.period_end,
-    )
-    .fetch_all(&pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // 5. Logged private counts per duration (private entries).
-    let logged_privates = sqlx::query!(
-        r#"
-        SELECT employee_id,
-               session_duration AS "session_duration!",
-               SUM(session_count)::int AS "count!"
-        FROM time_entries
-        WHERE entry_date BETWEEN $1 AND $2 AND session_duration IS NOT NULL
-        GROUP BY employee_id, session_duration
-        "#,
-        period.period_start, period.period_end,
-    )
-    .fetch_all(&pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // 6. Dollar buckets.
+    // Dollar buckets.
     let dollars = sqlx::query!(
         r#"
         SELECT employee_id, other_earn, competition_earn, coaching_earn
@@ -423,81 +394,135 @@ pub async fn list_totals(
         WHERE period_start = $1 AND period_end = $2
         "#,
         period.period_start, period.period_end,
-    )
-    .fetch_all(&pool).await
+    ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // --- Index everything by employee ---
+    // For the overtime computation we need each employee's WORKED entries for
+    // any Sun–Sat week overlapping the period. Widen the window by 6 days each
+    // side so straddling weeks are fully covered. Sick entries (type='sick')
+    // are excluded — they don't count toward the 40-hour threshold.
+    let window_start = period.period_start - chrono::Duration::days(6);
+    let window_end = period.period_end + chrono::Duration::days(6);
+    let worked = sqlx::query!(
+        r#"
+        SELECT employee_id, entry_date,
+               hours,
+               COALESCE(category, 'uncategorized') AS "category!",
+               (session_duration IS NOT NULL) AS "is_private!"
+        FROM time_entries
+        WHERE entry_date BETWEEN $1 AND $2 AND type != 'sick'
+        "#,
+        window_start, window_end,
+    ).fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Stored category hours: employee -> category -> (reg, ot, sick)
+    // Logged private counts per duration, within the period (for mismatch).
+    let logged_privates = sqlx::query!(
+        r#"
+        SELECT employee_id, session_duration AS "session_duration!", SUM(session_count)::int AS "count!"
+        FROM time_entries
+        WHERE entry_date BETWEEN $1 AND $2 AND session_duration IS NOT NULL
+        GROUP BY employee_id, session_duration
+        "#,
+        period.period_start, period.period_end,
+    ).fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // --- Index stored/dollar data ---
     let mut stored_map: HashMap<i64, HashMap<String, (Decimal, Decimal, Decimal)>> = HashMap::new();
     for s in &stored_cats {
         stored_map.entry(s.employee_id).or_default()
             .insert(s.category.clone(), (s.regular_hours, s.overtime_hours, s.sick_hours));
     }
-
-    // Logged category hours: employee -> category -> hours
-    let mut logged_map: HashMap<i64, HashMap<String, Decimal>> = HashMap::new();
-    for l in &logged_cats {
-        logged_map.entry(l.employee_id).or_default().insert(l.category.clone(), l.hours);
-    }
-
-    // Stored private: employee -> duration -> count
     let mut stored_priv_map: HashMap<i64, HashMap<i32, i32>> = HashMap::new();
     for p in &stored_privates {
         stored_priv_map.entry(p.employee_id).or_default().insert(p.session_duration, p.session_count);
     }
-
-    // Logged private: employee -> duration -> count
     let mut logged_priv_map: HashMap<i64, HashMap<i32, i32>> = HashMap::new();
     for p in &logged_privates {
         logged_priv_map.entry(p.employee_id).or_default().insert(p.session_duration, p.count);
     }
-
     let mut dollar_map: HashMap<i64, (Decimal, Decimal, Decimal)> = HashMap::new();
     for d in &dollars {
         dollar_map.insert(d.employee_id, (d.other_earn, d.competition_earn, d.coaching_earn));
     }
 
-    // --- Assemble ---
+    // Group worked entries by employee for the overtime walk.
+    let mut worked_by_emp: HashMap<i64, Vec<OvertimeEntry>> = HashMap::new();
+    for w in &worked {
+        worked_by_emp.entry(w.employee_id).or_default().push(OvertimeEntry {
+            entry_date: w.entry_date,
+            hours: w.hours,
+            category: w.category.clone(),
+            is_private: w.is_private,
+        });
+    }
+
+    // --- Assemble per employee ---
     let mut result = Vec::new();
     for emp in &employees {
-        // Categories: union of stored and logged category names.
+        // Compute the reg/OT split for this employee's worked entries, then
+        // keep only splits whose date falls IN the period, grouped by category.
+        let mut computed: HashMap<String, (Decimal, Decimal)> = HashMap::new(); // cat -> (reg, ot)
+        // Also track logged worked hours per category in-period (for mismatch).
+        let mut logged_cat: HashMap<String, Decimal> = HashMap::new();
+        if let Some(entries) = worked_by_emp.get(&emp.id) {
+            let splits = compute_overtime(entries);
+            for (entry, split) in entries.iter().zip(splits.iter()) {
+                if entry.entry_date >= period.period_start && entry.entry_date <= period.period_end {
+                    let c = computed.entry(entry.category.clone()).or_insert((Decimal::ZERO, Decimal::ZERO));
+                    c.0 += split.regular;
+                    c.1 += split.overtime;
+                    *logged_cat.entry(entry.category.clone()).or_insert(Decimal::ZERO) += entry.hours;
+                }
+            }
+        }
+
+        // Union of computed categories and admin-edited categories.
         let mut cat_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for k in computed.keys() { cat_names.insert(k.clone()); }
         if let Some(m) = stored_map.get(&emp.id) { for k in m.keys() { cat_names.insert(k.clone()); } }
-        if let Some(m) = logged_map.get(&emp.id) { for k in m.keys() { cat_names.insert(k.clone()); } }
 
         let mut categories = Vec::new();
         for cat in &cat_names {
-            let (reg, ot, sick) = stored_map.get(&emp.id)
-                .and_then(|m| m.get(cat)).copied()
-                .unwrap_or((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
-            let logged = logged_map.get(&emp.id)
-                .and_then(|m| m.get(cat)).copied()
-                .unwrap_or(Decimal::ZERO);
-            categories.push(CategoryRow {
-                category: cat.clone(),
-                regular_hours: reg,
-                overtime_hours: ot,
-                sick_hours: sick,
-                logged_hours: logged,
-            });
+            // Skip the private pseudo-category here — privates handled separately.
+            if cat == "private" { continue; }
+            let logged = logged_cat.get(cat).copied().unwrap_or(Decimal::ZERO);
+            if let Some((reg, ot, sick)) = stored_map.get(&emp.id).and_then(|m| m.get(cat)).copied() {
+                // Admin override.
+                categories.push(CategoryRow {
+                    category: cat.clone(),
+                    regular_hours: reg, overtime_hours: ot, sick_hours: sick,
+                    logged_hours: logged, admin_edited: true,
+                });
+            } else {
+                // Computed from entries.
+                let (reg, ot) = computed.get(cat).copied().unwrap_or((Decimal::ZERO, Decimal::ZERO));
+                categories.push(CategoryRow {
+                    category: cat.clone(),
+                    regular_hours: reg, overtime_hours: ot, sick_hours: Decimal::ZERO,
+                    logged_hours: logged, admin_edited: false,
+                });
+            }
         }
 
-        // Private: union of stored and logged durations.
+        // Private durations: union of computed-from-logged and admin-edited.
         let mut durations: std::collections::BTreeSet<i32> = std::collections::BTreeSet::new();
-        if let Some(m) = stored_priv_map.get(&emp.id) { for k in m.keys() { durations.insert(*k); } }
         if let Some(m) = logged_priv_map.get(&emp.id) { for k in m.keys() { durations.insert(*k); } }
+        if let Some(m) = stored_priv_map.get(&emp.id) { for k in m.keys() { durations.insert(*k); } }
 
         let mut private_sessions = Vec::new();
         for dur in &durations {
-            let count = stored_priv_map.get(&emp.id).and_then(|m| m.get(dur)).copied().unwrap_or(0);
             let logged = logged_priv_map.get(&emp.id).and_then(|m| m.get(dur)).copied().unwrap_or(0);
-            private_sessions.push(PrivateRow {
-                session_duration: *dur,
-                session_count: count,
-                logged_count: logged,
-            });
+            if let Some(count) = stored_priv_map.get(&emp.id).and_then(|m| m.get(dur)).copied() {
+                private_sessions.push(PrivateRow {
+                    session_duration: *dur, session_count: count, logged_count: logged, admin_edited: true,
+                });
+            } else {
+                private_sessions.push(PrivateRow {
+                    session_duration: *dur, session_count: logged, logged_count: logged, admin_edited: false,
+                });
+            }
         }
 
         let (other, competition, coaching) = dollar_map.get(&emp.id).copied()
@@ -510,9 +535,7 @@ pub async fn list_totals(
             pay_method: emp.pay_method.clone(),
             categories,
             private_sessions,
-            other_earn: other,
-            competition_earn: competition,
-            coaching_earn: coaching,
+            other_earn: other, competition_earn: competition, coaching_earn: coaching,
         });
     }
 
