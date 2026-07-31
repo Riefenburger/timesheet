@@ -11,6 +11,146 @@ use std::collections::HashMap;
 
 use crate::auth::AdminEmployee;
 
+use chrono::Datelike;
+
+// One entry's minimal shape for the overtime walk.
+pub struct OvertimeEntry {
+    pub entry_date: NaiveDate,
+    pub hours: Decimal,
+    pub category: String,
+    pub is_private: bool,
+}
+
+// The regular/overtime split for one entry.
+#[derive(Debug, PartialEq)]
+pub struct OvertimeSplit {
+    pub regular: Decimal,
+    pub overtime: Decimal,
+}
+
+// The Sunday that starts the Sun–Sat week containing `d`.
+fn week_start(d: NaiveDate) -> NaiveDate {
+    // chrono: Mon=0 .. Sun=6 via num_days_from_monday; we want days since Sunday.
+    let days_since_sunday = (d.weekday().num_days_from_sunday()) as i64;
+    d - chrono::Duration::days(days_since_sunday)
+}
+
+// Walk each Sun–Sat week chronologically (regular before private within a day),
+// splitting each entry's hours at the 40-hour line. Returns splits in input order.
+pub fn compute_overtime(entries: &[OvertimeEntry]) -> Vec<OvertimeSplit> {
+    let threshold = Decimal::from(40);
+    let mut results: Vec<OvertimeSplit> =
+        (0..entries.len()).map(|_| OvertimeSplit { regular: Decimal::ZERO, overtime: Decimal::ZERO }).collect();
+
+    // Group entry indices by week-start.
+    let mut weeks: HashMap<NaiveDate, Vec<usize>> = HashMap::new();
+    for (i, e) in entries.iter().enumerate() {
+        weeks.entry(week_start(e.entry_date)).or_default().push(i);
+    }
+
+    for (_wk, mut idxs) in weeks {
+        // Order: by date, then regular(false) before private(true), then original index.
+        idxs.sort_by(|&a, &b| {
+            let ea = &entries[a];
+            let eb = &entries[b];
+            ea.entry_date.cmp(&eb.entry_date)
+                .then(ea.is_private.cmp(&eb.is_private))
+                .then(a.cmp(&b))
+        });
+
+        let mut cumulative = Decimal::ZERO;
+        for i in idxs {
+            let h = entries[i].hours;
+            let start = cumulative;
+            let end = cumulative + h;
+            let (reg, ot) = if end <= threshold {
+                (h, Decimal::ZERO)
+            } else if start >= threshold {
+                (Decimal::ZERO, h)
+            } else {
+                (threshold - start, end - threshold)
+            };
+            results[i] = OvertimeSplit { regular: reg, overtime: ot };
+            cumulative = end;
+        }
+    }
+
+    results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    fn d(s: &str) -> NaiveDate { NaiveDate::from_str(s).unwrap() }
+    fn dec(n: &str) -> Decimal { Decimal::from_str(n).unwrap() }
+    fn e(date: &str, hours: &str, cat: &str, priv_: bool) -> OvertimeEntry {
+        OvertimeEntry { entry_date: d(date), hours: dec(hours), category: cat.to_string(), is_private: priv_ }
+    }
+
+    #[test]
+    fn under_40_all_regular() {
+        let entries = vec![
+            e("2026-07-06", "8", "teaching", false),
+            e("2026-07-07", "8", "teaching", false),
+            e("2026-07-08", "8", "office", false),
+        ];
+        let r = compute_overtime(&entries);
+        for split in &r { assert_eq!(split.overtime, Decimal::ZERO); }
+        assert_eq!(r[0].regular, dec("8"));
+    }
+
+    #[test]
+    fn exactly_40_then_overtime() {
+        let entries = vec![
+            e("2026-07-06", "10", "teaching", false),
+            e("2026-07-07", "10", "teaching", false),
+            e("2026-07-08", "10", "teaching", false),
+            e("2026-07-09", "10", "office", false),   // ends exactly at 40
+            e("2026-07-10", "5", "office", false),    // all OT
+        ];
+        let r = compute_overtime(&entries);
+        assert_eq!(r[3], OvertimeSplit { regular: dec("10"), overtime: Decimal::ZERO });
+        assert_eq!(r[4], OvertimeSplit { regular: Decimal::ZERO, overtime: dec("5") });
+    }
+
+    #[test]
+    fn straddles_the_line() {
+        let entries = vec![
+            e("2026-07-06", "38", "teaching", false),
+            e("2026-07-07", "4", "office", false),  // 2 reg + 2 OT
+        ];
+        let r = compute_overtime(&entries);
+        assert_eq!(r[1], OvertimeSplit { regular: dec("2"), overtime: dec("2") });
+    }
+
+    #[test]
+    fn private_after_regular_same_day() {
+        let entries = vec![
+            e("2026-07-06", "38", "teaching", false),
+            e("2026-07-07", "1", "private", true),   // private, listed first but counts last
+            e("2026-07-07", "3", "office", false),   // regular, counts first: 38->41 (2reg+1ot)
+        ];
+        let r = compute_overtime(&entries);
+        assert_eq!(r[2], OvertimeSplit { regular: dec("2"), overtime: dec("1") }); // office
+        assert_eq!(r[1], OvertimeSplit { regular: Decimal::ZERO, overtime: dec("1") }); // private all OT
+    }
+
+    #[test]
+    fn week_straddles_two_periods() {
+        let entries = vec![
+            e("2026-07-13", "20", "teaching", false),  // period 1
+            e("2026-07-14", "22", "teaching", false),  // period 1: 20 reg + 2 OT
+            e("2026-07-16", "5", "office", false),     // period 2: all OT
+        ];
+        let r = compute_overtime(&entries);
+        assert_eq!(r[0], OvertimeSplit { regular: dec("20"), overtime: Decimal::ZERO });
+        assert_eq!(r[1], OvertimeSplit { regular: dec("20"), overtime: dec("2") });
+        assert_eq!(r[2], OvertimeSplit { regular: Decimal::ZERO, overtime: dec("5") });
+    }
+}
+
 // --- Category hours upsert (typed regular/OT/sick for a normal category) ---
 
 #[derive(Deserialize)]
