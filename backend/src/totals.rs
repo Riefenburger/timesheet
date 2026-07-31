@@ -541,3 +541,39 @@ pub async fn list_totals(
 
     Ok(Json(result))
 }
+
+#[derive(Deserialize)]
+pub struct RevertInput {
+    employee_id: i64,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+    category: String,
+    #[serde(default)]
+    session_duration: Option<i32>,
+}
+
+// POST /admin/category-hours/revert — drop an admin override so the row goes
+// back to being computed from entries. Admin-gated.
+pub async fn revert_category_hours(
+    State(pool): State<PgPool>,
+    _admin: AdminEmployee,
+    Json(payload): Json<RevertInput>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query!(
+        r#"
+        DELETE FROM category_hours
+        WHERE employee_id = $1 AND period_start = $2 AND period_end = $3
+          AND category = $4
+          AND session_duration IS NOT DISTINCT FROM $5
+        "#,
+        payload.employee_id,
+        payload.period_start,
+        payload.period_end,
+        payload.category,
+        payload.session_duration,
+    )
+    .execute(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}

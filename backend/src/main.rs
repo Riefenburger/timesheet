@@ -41,6 +41,7 @@ async fn main() {
         .route("/admin/category-hours", post(totals::upsert_category_hours))
         .route("/admin/private-counts", post(totals::upsert_private_count))
         .route("/admin/dollar-totals", post(totals::upsert_dollar_totals))
+        .route("/admin/category-hours/revert", post(totals::revert_category_hours))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
