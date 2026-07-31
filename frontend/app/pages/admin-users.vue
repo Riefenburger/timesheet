@@ -1,29 +1,31 @@
 <script setup>
-const SUPER_ADMIN_ID = 2; // STUB: Mark (super_admin) on the dev database
-
-const CATEGORIES = ["teaching", "assisting", "office"];
-
+const SUPER_ADMIN_ID = 2; // STUB: Mark (super_admin) on dev
 const employees = ref([]);
 const loading = ref(false);
 const error = ref(null);
+
+// Global category list (for the rate-assignment dropdown + management).
+const categories = ref([]);
+async function loadCategories() {
+  try { categories.value = await $fetch("/api/categories", { headers }); }
+  catch (e) { categories.value = []; }
+}
 
 const showModal = ref(false);
 const editingId = ref(null);
 const saving = ref(false);
 const modalError = ref(null);
-
 const form = reactive({
   name: "", employee_number: "", email: "",
   role: "user", pay_method: "payroll", is_salaried: false, salary: null,
 });
 
-// Rate state (only used in edit mode)
 const rates = ref([]);
 const ratesLoading = ref(false);
 const rateError = ref(null);
-const newRate = reactive({ label: "teaching", amount: null });
 
 const headers = { "X-Employee-Id": String(SUPER_ADMIN_ID) };
+const DURATIONS = [20, 30, 45, 60];
 
 function roleLabel(r) {
   return { user: "User", admin: "Admin", super_admin: "Super Admin" }[r] || r;
@@ -45,7 +47,6 @@ function resetForm() {
   form.name = ""; form.employee_number = ""; form.email = "";
   form.role = "user"; form.pay_method = "payroll"; form.is_salaried = false; form.salary = null;
 }
-
 function openAdd() {
   editingId.value = null;
   resetForm();
@@ -53,7 +54,6 @@ function openAdd() {
   modalError.value = null;
   showModal.value = true;
 }
-
 async function openEdit(emp) {
   editingId.value = emp.id;
   form.name = emp.name;
@@ -67,7 +67,6 @@ async function openEdit(emp) {
   showModal.value = true;
   await loadRates(emp.id);
 }
-
 function closeModal() {
   showModal.value = false;
   modalError.value = null;
@@ -105,8 +104,7 @@ async function saveEmployee() {
   }
 }
 
-// ---- Rate management (edit mode only, saves immediately) ----
-
+// ---- Rate management ----
 async function loadRates(employeeId) {
   ratesLoading.value = true;
   rateError.value = null;
@@ -119,10 +117,34 @@ async function loadRates(employeeId) {
   }
 }
 
-// Which of the three categories don't yet have a rate (so we don't offer duplicates).
+// Normal (non-private) rates.
+const normalRates = computed(() => rates.value.filter((r) => !r.label.startsWith("private_")));
+// Private rates as a map duration -> rate object.
+const privateRates = computed(() => {
+  const m = {};
+  for (const r of rates.value) {
+    if (r.label.startsWith("private_")) {
+      const dur = Number(r.label.slice("private_".length));
+      if (DURATIONS.includes(dur)) m[dur] = r;
+    }
+  }
+  return m;
+});
+const hasAnyPrivate = computed(() => Object.keys(privateRates.value).length > 0);
+
+// Categories available to ADD as a normal rate (global list minus private minus already-set).
 const availableCategories = computed(() =>
-  CATEGORIES.filter((c) => !rates.value.some((r) => r.label === c))
+  categories.value
+    .filter((c) => !c.is_private)
+    .map((c) => c.name)
+    .filter((name) => !rates.value.some((r) => r.label === name))
 );
+
+// Add-rate form.
+const newRate = reactive({ label: "", amount: null });
+// Private add form: one amount per not-yet-set duration.
+const newPrivate = reactive({ 20: null, 30: null, 45: null, 60: null });
+const showPrivateAdd = ref(false);
 
 async function addRate() {
   rateError.value = null;
@@ -136,10 +158,38 @@ async function addRate() {
       body: { employee_id: editingId.value, label: newRate.label, amount: Number(newRate.amount) },
     });
     newRate.amount = null;
+    newRate.label = "";
     await loadRates(editingId.value);
-    newRate.label = availableCategories.value[0] ?? "teaching";
   } catch (e) {
     rateError.value = (e && e.data) ? String(e.data) : "Could not add rate.";
+  }
+}
+
+// Save all filled-in private duration amounts (add or update).
+async function savePrivateRates() {
+  rateError.value = null;
+  const toSave = DURATIONS.filter((d) => newPrivate[d] !== null && Number(newPrivate[d]) > 0);
+  if (toSave.length === 0) { rateError.value = "Enter at least one duration rate."; return; }
+  try {
+    for (const d of toSave) {
+      const existing = privateRates.value[d];
+      if (existing) {
+        await $fetch(`/api/admin/rates/${existing.id}`, {
+          method: "PUT", headers,
+          body: { label: `private_${d}`, amount: Number(newPrivate[d]) },
+        });
+      } else {
+        await $fetch("/api/admin/rates", {
+          method: "POST", headers,
+          body: { employee_id: editingId.value, label: `private_${d}`, amount: Number(newPrivate[d]) },
+        });
+      }
+      newPrivate[d] = null;
+    }
+    showPrivateAdd.value = false;
+    await loadRates(editingId.value);
+  } catch (e) {
+    rateError.value = (e && e.data) ? String(e.data) : "Could not save private rates.";
   }
 }
 
@@ -155,7 +205,6 @@ async function saveRate(rate) {
     rateError.value = (e && e.data) ? String(e.data) : "Could not update rate.";
   }
 }
-
 async function deleteRate(rate) {
   rateError.value = null;
   try {
@@ -166,8 +215,47 @@ async function deleteRate(rate) {
   }
 }
 
-onMounted(loadEmployees);
+// ---- Global category management modal ----
+const showCatModal = ref(false);
+const catError = ref(null);
+const newCat = reactive({ name: "", is_private: false });
+const catSaving = ref(false);
 
+function openCatModal() {
+  catError.value = null;
+  newCat.name = ""; newCat.is_private = false;
+  showCatModal.value = true;
+}
+function closeCatModal() { showCatModal.value = false; catError.value = null; }
+
+async function addCategory() {
+  catError.value = null;
+  if (!newCat.name.trim()) { catError.value = "Enter a category name."; return; }
+  catSaving.value = true;
+  try {
+    await $fetch("/api/admin/categories", {
+      method: "POST", headers,
+      body: { name: newCat.name.trim(), is_private: newCat.is_private },
+    });
+    newCat.name = ""; newCat.is_private = false;
+    await loadCategories();
+  } catch (e) {
+    catError.value = (e && e.data) ? String(e.data) : "Could not add category.";
+  } finally {
+    catSaving.value = false;
+  }
+}
+async function deleteCategory(cat) {
+  catError.value = null;
+  try {
+    await $fetch(`/api/admin/categories/${cat.id}`, { method: "DELETE", headers });
+    await loadCategories();
+  } catch (e) {
+    catError.value = (e && e.data) ? String(e.data) : "Could not delete category.";
+  }
+}
+
+onMounted(() => { loadEmployees(); loadCategories(); });
 </script>
 
 <template>
@@ -175,8 +263,12 @@ onMounted(loadEmployees);
     <div class="max-w-4xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Manage Employees</h1>
-        <div class="flex items-center gap-4">
-          <NuxtLink to="/admin" class="text-sm text-slate-500 hover:text-slate-800">Entries →</NuxtLink>
+        <div class="flex items-center gap-3">
+          <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">Totals →</NuxtLink>
+          <button @click="openCatModal"
+            class="bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-600">
+            + Category
+          </button>
           <button @click="openAdd"
             class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500">
             + Add Employee
@@ -221,6 +313,7 @@ onMounted(loadEmployees);
       </div>
     </div>
 
+    <!-- Employee add/edit modal -->
     <div v-if="showModal"
       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
       @click.self="closeModal">
@@ -228,7 +321,6 @@ onMounted(loadEmployees);
         <h2 class="text-lg font-semibold text-slate-800 mb-4">
           {{ editingId === null ? "Add Employee" : "Edit Employee" }}
         </h2>
-
         <form @submit.prevent="saveEmployee" class="space-y-3">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Name</label>
@@ -267,9 +359,7 @@ onMounted(loadEmployees);
             <label class="block text-sm font-medium text-slate-600 mb-1">Salary (per period)</label>
             <input v-model.number="form.salary" type="number" step="0.01" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
-
           <p v-if="modalError" class="text-red-600 text-sm">{{ modalError }}</p>
-
           <div class="flex justify-end gap-3 pt-2">
             <button type="button" @click="closeModal"
               class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
@@ -282,33 +372,102 @@ onMounted(loadEmployees);
 
         <!-- Rates: edit mode only -->
         <div v-if="editingId !== null" class="mt-6 pt-5 border-t border-slate-100">
-          <h3 class="text-sm font-semibold text-slate-700 mb-3">Pay Rates</h3>
+          <h3 class="text-sm font-semibold text-slate-700 mb-3">Categories &amp; Rates</h3>
           <p v-if="ratesLoading" class="text-slate-400 text-sm">Loading rates…</p>
           <template v-else>
-            <div v-if="rates.length === 0" class="text-slate-400 text-sm mb-3">No rates set yet.</div>
-            <div v-for="rate in rates" :key="rate.id" class="flex items-center gap-2 mb-2">
+            <div v-if="normalRates.length === 0 && !hasAnyPrivate" class="text-slate-400 text-sm mb-3">
+              No categories assigned yet.
+            </div>
+
+            <!-- Normal rates -->
+            <div v-for="rate in normalRates" :key="rate.id" class="flex items-center gap-2 mb-2">
               <span class="w-24 text-sm text-slate-700 capitalize">{{ rate.label }}</span>
               <span class="text-slate-400">$</span>
               <input v-model.number="rate.amount" type="number" step="0.01" min="0"
                 class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
-              <button @click="saveRate(rate)"
-                class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
-              <button @click="deleteRate(rate)"
-                class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 ml-1">Remove</button>
+              <button @click="saveRate(rate)" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
+              <button @click="deleteRate(rate)" class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 ml-1">Remove</button>
             </div>
 
+            <!-- Private rates (grouped by duration) -->
+            <div v-if="hasAnyPrivate" class="mt-3 mb-2">
+              <div class="text-xs font-medium text-slate-500 mb-1">Private (per duration)</div>
+              <div v-for="d in DURATIONS" :key="d">
+                <div v-if="privateRates[d]" class="flex items-center gap-2 mb-2">
+                  <span class="w-24 text-sm text-slate-700">{{ d }} min</span>
+                  <span class="text-slate-400">$</span>
+                  <input v-model.number="privateRates[d].amount" type="number" step="0.01" min="0"
+                    class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+                  <button @click="saveRate(privateRates[d])" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
+                  <button @click="deleteRate(privateRates[d])" class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 ml-1">Remove</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add a normal category rate -->
             <div v-if="availableCategories.length > 0" class="flex items-center gap-2 mt-3">
-              <select v-model="newRate.label" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm capitalize">
+              <select v-model="newRate.label" class="w-28 rounded border border-slate-300 px-2 py-1 text-sm capitalize">
+                <option value="" disabled>Category…</option>
                 <option v-for="c in availableCategories" :key="c" :value="c">{{ c }}</option>
               </select>
               <span class="text-slate-400">$</span>
               <input v-model.number="newRate.amount" type="number" step="0.01" min="0" placeholder="0.00"
                 class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
-              <button @click="addRate"
-                class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
+              <button @click="addRate" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
             </div>
+
+            <!-- Add / set private rates -->
+            <div class="mt-3">
+              <button v-if="!showPrivateAdd" @click="showPrivateAdd = true"
+                class="text-xs text-indigo-600 hover:text-indigo-800">
+                {{ hasAnyPrivate ? "+ Edit private durations" : "+ Add private rates" }}
+              </button>
+              <div v-else class="border border-slate-200 rounded-lg p-3 mt-1">
+                <div class="text-xs font-medium text-slate-500 mb-2">Set a rate for each private duration (leave blank to skip):</div>
+                <div v-for="d in DURATIONS" :key="d" class="flex items-center gap-2 mb-2">
+                  <span class="w-20 text-sm text-slate-700">{{ d }} min</span>
+                  <span class="text-slate-400">$</span>
+                  <input v-model.number="newPrivate[d]" type="number" step="0.01" min="0"
+                    :placeholder="privateRates[d] ? String(privateRates[d].amount) : '0.00'"
+                    class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+                </div>
+                <div class="flex gap-2 mt-1">
+                  <button @click="savePrivateRates" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">Save private</button>
+                  <button @click="showPrivateAdd = false" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">Cancel</button>
+                </div>
+              </div>
+            </div>
+
             <p v-if="rateError" class="text-red-600 text-sm mt-2">{{ rateError }}</p>
           </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global category management modal -->
+    <div v-if="showCatModal"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
+      @click.self="closeCatModal">
+      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
+        <h2 class="text-lg font-semibold text-slate-800 mb-4">Manage Categories</h2>
+        <div class="space-y-2 mb-4">
+          <div v-for="cat in categories" :key="cat.id" class="flex items-center justify-between py-1 border-b border-slate-50">
+            <span class="text-sm text-slate-700 capitalize">
+              {{ cat.name }}
+              <span v-if="cat.is_private" class="text-xs text-indigo-500 ml-1">(private)</span>
+            </span>
+            <button v-if="!cat.is_private" @click="deleteCategory(cat)" class="text-xs text-red-500 hover:text-red-700">delete</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
+          <input v-model="newCat.name" type="text" placeholder="New category name"
+            class="flex-1 rounded border border-slate-300 px-3 py-2 text-sm" />
+          <button @click="addCategory" :disabled="catSaving"
+            class="text-sm bg-emerald-600 text-white rounded px-3 py-2 hover:bg-emerald-500 disabled:opacity-50">Add</button>
+        </div>
+        <p v-if="catError" class="text-red-600 text-sm mt-2">{{ catError }}</p>
+        <div class="flex justify-end mt-4">
+          <button @click="closeCatModal" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Done</button>
         </div>
       </div>
     </div>

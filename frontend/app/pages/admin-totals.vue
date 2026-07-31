@@ -27,6 +27,7 @@ async function loadTotals() {
       _comp: Number(emp.competition_earn),
       _coaching: Number(emp.coaching_earn),
       _savingDollars: false,
+      _privateExpanded: false,
       categories: emp.categories
         .filter((c) => c.category !== "private")
         .map((c) => ({
@@ -36,6 +37,11 @@ async function loadTotals() {
           _sick: Number(c.sick_hours),
           _saving: false,
         })),
+      privates: (emp.private_sessions || []).map((p) => ({
+        ...p,
+        _count: Number(p.session_count),
+        _saving: false,
+      })),
     }));
   } catch (e) {
     error.value = "Could not load totals — are you an admin?";
@@ -52,6 +58,9 @@ const visibleEmployees = computed(() => {
 function sumField(emp, field) {
   return emp.categories.reduce((a, c) => a + Number(c[field]), 0);
 }
+function privateHours(emp) {
+  return emp.privates.reduce((a, p) => a + (p.session_duration / 60) * Number(p.session_count), 0);
+}
 
 function isDirty(c) {
   return c._regular !== Number(c.regular_hours)
@@ -67,6 +76,8 @@ function dollarsDirty(emp) {
     || emp._comp !== Number(emp.competition_earn)
     || emp._coaching !== Number(emp.coaching_earn);
 }
+function privateDirty(p) { return p._count !== Number(p.session_count); }
+function privateMismatch(p) { return p._count !== Number(p.logged_count); }
 
 async function saveCategory(emp, c) {
   c._saving = true;
@@ -91,7 +102,6 @@ async function saveCategory(emp, c) {
     c._saving = false;
   }
 }
-
 async function revertCategory(emp, c) {
   c._saving = true;
   error.value = null;
@@ -110,7 +120,6 @@ async function revertCategory(emp, c) {
     c._saving = false;
   }
 }
-
 async function saveDollars(emp) {
   emp._savingDollars = true;
   error.value = null;
@@ -132,7 +141,193 @@ async function saveDollars(emp) {
     emp._savingDollars = false;
   }
 }
+async function savePrivate(emp, p) {
+  p._saving = true;
+  error.value = null;
+  try {
+    await $fetch("/api/admin/private-counts", {
+      method: "POST", headers,
+      body: {
+        employee_id: emp.employee_id,
+        period_start: start.value, period_end: end.value,
+        session_duration: p.session_duration, session_count: p._count,
+      },
+    });
+    p.session_count = p._count;
+    p.admin_edited = true;
+  } catch (e) {
+    error.value = "Could not save that private count.";
+  } finally {
+    p._saving = false;
+  }
+}
+async function revertPrivate(emp, p) {
+  p._saving = true;
+  error.value = null;
+  try {
+    await $fetch("/api/admin/category-hours/revert", {
+      method: "POST", headers,
+      body: {
+        employee_id: emp.employee_id,
+        period_start: start.value, period_end: end.value,
+        category: "private", session_duration: p.session_duration,
+      },
+    });
+    await loadTotals();
+  } catch (e) {
+    error.value = "Could not refresh that private row.";
+    p._saving = false;
+  }
+}
 
+// --- Entry drill-down ---
+const entriesOpen = reactive({});
+const entriesData = reactive({});
+const entriesLoading = reactive({});
+function catKey(emp, category) { return `${emp.employee_id}:${category}`; }
+function privKey(emp, duration) { return `${emp.employee_id}:private:${duration}`; }
+
+async function toggleCategoryEntries(emp, category) {
+  const key = catKey(emp, category);
+  entriesOpen[key] = !entriesOpen[key];
+  if (entriesOpen[key] && entriesData[key] === undefined) {
+    entriesLoading[key] = true;
+    try {
+      entriesData[key] = await $fetch(`/api/admin/employees/${emp.employee_id}/entries`, {
+        headers,
+        query: { period_start: start.value, period_end: end.value,
+          category: category === "uncategorized" ? "__uncategorized__" : category },
+      });
+    } catch (e) { entriesData[key] = []; }
+    finally { entriesLoading[key] = false; }
+  }
+}
+async function togglePrivateEntries(emp, duration) {
+  const key = privKey(emp, duration);
+  entriesOpen[key] = !entriesOpen[key];
+  if (entriesOpen[key] && entriesData[key] === undefined) {
+    entriesLoading[key] = true;
+    try {
+      const all = await $fetch(`/api/admin/employees/${emp.employee_id}/entries`, {
+        headers,
+        query: { period_start: start.value, period_end: end.value, category: "private" },
+      });
+      entriesData[key] = all.filter((e) => e.session_duration === duration);
+    } catch (e) { entriesData[key] = []; }
+    finally { entriesLoading[key] = false; }
+  }
+}
+
+const allCategories = ref([]);
+async function loadCategoryList() {
+  try { allCategories.value = await $fetch("/api/categories"); }
+  catch (e) { allCategories.value = []; }
+}
+
+const showEntryModal = ref(false);
+const entryModalMode = ref("edit");
+const entryModalEmp = ref(null);
+const entryModalKey = ref(null);
+const savingModal = ref(false);
+const entryModalError = ref(null);
+const entryForm = reactive({
+  id: null, entry_date: "", class_name: "", teacher_room: "",
+  category: null, hours: null, session_duration: null, session_count: null,
+});
+const entryIsPrivate = computed(() => {
+  const cat = allCategories.value.find((c) => c.name === entryForm.category);
+  return cat ? cat.is_private : false;
+});
+
+function openEditEntry(emp, key, s) {
+  entryModalMode.value = "edit";
+  entryModalEmp.value = emp;
+  entryModalKey.value = key;
+  entryForm.id = s.id;
+  entryForm.entry_date = s.entry_date;
+  entryForm.class_name = s.class_name;
+  entryForm.teacher_room = s.teacher_room;
+  entryForm.category = s.category;
+  entryForm.hours = Number(s.hours);
+  entryForm.session_duration = s.session_duration;
+  entryForm.session_count = s.session_count;
+  entryModalError.value = null;
+  showEntryModal.value = true;
+}
+function openAddEntry(emp, key, presetCategory, presetDuration) {
+  entryModalMode.value = "add";
+  entryModalEmp.value = emp;
+  entryModalKey.value = key;
+  entryForm.id = null;
+  entryForm.entry_date = start.value;
+  entryForm.class_name = "";
+  entryForm.teacher_room = "";
+  entryForm.category = presetCategory ?? null;
+  entryForm.hours = null;
+  entryForm.session_duration = presetDuration ?? null;
+  entryForm.session_count = null;
+  entryModalError.value = null;
+  showEntryModal.value = true;
+}
+function closeEntryModal() { showEntryModal.value = false; entryModalError.value = null; }
+
+async function saveEntryModal() {
+  entryModalError.value = null;
+  if (!entryForm.entry_date) { entryModalError.value = "Date is required."; return; }
+  const priv = entryIsPrivate.value;
+  const body = {
+    entry_date: entryForm.entry_date,
+    class_name: entryForm.class_name,
+    teacher_room: entryForm.teacher_room,
+    details: "",
+    category: entryForm.category === "" ? null : entryForm.category,
+    hours: priv ? 0 : Number(entryForm.hours),
+    session_duration: priv ? entryForm.session_duration : null,
+    session_count: priv ? entryForm.session_count : null,
+    type: "regular",
+  };
+  savingModal.value = true;
+  try {
+    if (entryModalMode.value === "add") {
+      await $fetch("/api/admin/entries", {
+        method: "POST", headers,
+        body: { employee_id: entryModalEmp.value.employee_id, ...body },
+      });
+    } else {
+      await $fetch(`/api/admin/entries/${entryForm.id}`, { method: "PUT", headers, body });
+    }
+    closeEntryModal();
+    await refreshAfterEntryChange(entryModalEmp.value, entryModalKey.value);
+  } catch (e) {
+    entryModalError.value = (e && e.data) ? String(e.data) : "Could not save the entry.";
+  } finally {
+    savingModal.value = false;
+  }
+}
+
+const confirmDeleteId = ref(null);
+async function doDelete(emp, key, id) {
+  try {
+    await $fetch(`/api/admin/entries/${id}`, { method: "DELETE", headers });
+    confirmDeleteId.value = null;
+    await refreshAfterEntryChange(emp, key);
+  } catch (e) { error.value = "Could not delete that entry."; }
+}
+
+async function refreshAfterEntryChange(emp, key) {
+  await loadTotals();
+  delete entriesData[key];
+  entriesOpen[key] = false;
+  if (key.includes(":private:")) {
+    const duration = Number(key.split(":private:")[1]);
+    await togglePrivateEntries(emp, duration);
+  } else {
+    const category = key.split(":")[1];
+    await toggleCategoryEntries(emp, category);
+  }
+}
+
+// --- period nav / calendar ---
 const months = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
 const yearOptions = computed(() => {
@@ -171,7 +366,7 @@ function pickPeriod(half) {
 }
 function changePeriod(fn) { fn(); loadTotals(); }
 
-onMounted(loadTotals);
+onMounted(() => { loadTotals(); loadCategoryList(); });
 </script>
 
 <template>
@@ -290,38 +485,215 @@ onMounted(loadTotals);
                 </td>
               </tr>
 
-              <tr v-for="c in emp.categories" :key="emp.employee_id + '-' + c.category" class="bg-slate-50/50">
-                <td class="pl-8 pr-3 py-2 text-slate-600 capitalize">
-                  {{ c.category }}
-                  <span v-if="c.admin_edited && !isDirty(c)" class="ml-1 text-xs text-indigo-500">✎ edited</span>
-                </td>
-                <td class="px-3 py-2 text-right">
-                  <input v-model.number="c._regular" type="number" step="0.25" min="0"
-                    class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
-                </td>
-                <td class="px-3 py-2 text-right">
-                  <input v-model.number="c._overtime" type="number" step="0.25" min="0"
-                    class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
-                </td>
-                <td class="px-3 py-2 text-right">
-                  <input v-model.number="c._sick" type="number" step="0.25" min="0"
-                    class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
-                </td>
-                <td class="px-3 py-2 text-right text-slate-500">{{ Number(c.logged_hours).toFixed(2) }}</td>
-                <td colspan="3"></td>
-                <td class="px-3 py-2 text-right whitespace-nowrap">
-                  <span v-if="isDirty(c) && isMismatch(c)" class="text-xs text-red-600 mr-1">⚠</span>
-                  <button v-if="isDirty(c)" @click="saveCategory(emp, c)" :disabled="c._saving"
-                    class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500 disabled:opacity-50">
-                    {{ c._saving ? "…" : "Save" }}
+              <template v-for="c in emp.categories" :key="emp.employee_id + '-' + c.category">
+                <tr class="bg-slate-50/50">
+                  <td class="pl-8 pr-3 py-2 text-slate-600 capitalize">
+                    <button @click="toggleCategoryEntries(emp, c.category)"
+                      class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                      {{ entriesOpen[catKey(emp, c.category)] ? "▾" : "▸" }}
+                    </button>
+                    {{ c.category }}
+                    <span v-if="c.admin_edited && !isDirty(c)" class="ml-1 text-xs text-indigo-500">✎ edited</span>
+                  </td>
+                  <td class="px-3 py-2 text-right">
+                    <input v-model.number="c._regular" type="number" step="0.25" min="0"
+                      class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
+                  </td>
+                  <td class="px-3 py-2 text-right">
+                    <input v-model.number="c._overtime" type="number" step="0.25" min="0"
+                      class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
+                  </td>
+                  <td class="px-3 py-2 text-right">
+                    <input v-model.number="c._sick" type="number" step="0.25" min="0"
+                      class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
+                  </td>
+                  <td class="px-3 py-2 text-right text-slate-500">{{ Number(c.logged_hours).toFixed(2) }}</td>
+                  <td colspan="3"></td>
+                  <td class="px-3 py-2 text-right whitespace-nowrap">
+                    <span v-if="isDirty(c) && isMismatch(c)" class="text-xs text-red-600 mr-1">⚠</span>
+                    <button v-if="isDirty(c)" @click="saveCategory(emp, c)" :disabled="c._saving"
+                      class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500 disabled:opacity-50">
+                      {{ c._saving ? "…" : "Save" }}
+                    </button>
+                    <button v-else-if="c.admin_edited" @click="revertCategory(emp, c)" :disabled="c._saving"
+                      class="text-xs text-slate-400 hover:text-slate-700 px-1" title="Revert to computed">↻</button>
+                  </td>
+                </tr>
+                <tr v-if="entriesOpen[catKey(emp, c.category)]" class="bg-white">
+                  <td colspan="9" class="pl-12 pr-3 py-2">
+                    <p v-if="entriesLoading[catKey(emp, c.category)]" class="text-xs text-slate-400">Loading…</p>
+                    <template v-else>
+                      <table class="w-full text-xs mb-2">
+                        <tbody>
+                          <tr v-for="s in entriesData[catKey(emp, c.category)]" :key="s.id" class="text-slate-500">
+                            <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
+                            <td class="py-1">{{ s.class_name }}</td>
+                            <td class="py-1">Rm {{ s.teacher_room }}</td>
+                            <td class="py-1 text-right">{{ s.hours }}h</td>
+                            <td class="py-1 text-right w-24">
+                              <button @click="openEditEntry(emp, catKey(emp, c.category), s)"
+                                class="text-slate-400 hover:text-slate-700 mr-2">edit</button>
+                              <template v-if="confirmDeleteId === s.id">
+                                <button @click="doDelete(emp, catKey(emp, c.category), s.id)"
+                                  class="text-red-600 mr-1">✓</button>
+                                <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                              </template>
+                              <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
+                            </td>
+                          </tr>
+                          <tr v-if="!entriesData[catKey(emp, c.category)] || entriesData[catKey(emp, c.category)].length === 0">
+                            <td colspan="5" class="py-1 text-slate-400">No entries in this category.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <button @click="openAddEntry(emp, catKey(emp, c.category), c.category, null)"
+                        class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">+ Add entry</button>
+                    </template>
+                  </td>
+                </tr>
+              </template>
+
+              <tr v-if="emp.privates.length" class="bg-slate-50/50">
+                <td class="pl-8 pr-3 py-2 text-slate-600">
+                  <button @click="emp._privateExpanded = !emp._privateExpanded"
+                    class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                    {{ emp._privateExpanded ? "▾" : "▸" }}
                   </button>
-                  <button v-else-if="c.admin_edited" @click="revertCategory(emp, c)" :disabled="c._saving"
-                    class="text-xs text-slate-400 hover:text-slate-700 px-1" title="Revert to computed">↻</button>
+                  private
+                  <span class="text-xs text-slate-400">({{ privateHours(emp).toFixed(2) }} hrs)</span>
                 </td>
+                <td colspan="8"></td>
               </tr>
+              <template v-if="emp._privateExpanded">
+                <template v-for="p in emp.privates" :key="emp.employee_id + '-priv-' + p.session_duration">
+                  <tr class="bg-slate-50">
+                    <td class="pl-16 pr-3 py-2 text-slate-500">
+                      <button @click="togglePrivateEntries(emp, p.session_duration)"
+                        class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                        {{ entriesOpen[privKey(emp, p.session_duration)] ? "▾" : "▸" }}
+                      </button>
+                      {{ p.session_duration }} min
+                      <span v-if="p.admin_edited && !privateDirty(p)" class="ml-1 text-xs text-indigo-500">✎ edited</span>
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                      <div class="flex items-center justify-end gap-1">
+                        <input v-model.number="p._count" type="number" step="1" min="0"
+                          class="w-16 rounded border border-slate-300 px-2 py-1 text-right" />
+                        <span class="text-xs text-slate-400">sess.</span>
+                      </div>
+                    </td>
+                    <td colspan="3" class="px-3 py-2 text-right text-slate-400 text-xs">
+                      logged: {{ ((p.session_duration / 60) * p.logged_count).toFixed(2) }} hrs
+                    </td>
+                    <td colspan="3"></td>
+                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                      <span v-if="privateDirty(p) && privateMismatch(p)" class="text-xs text-red-600 mr-1">⚠</span>
+                      <button v-if="privateDirty(p)" @click="savePrivate(emp, p)" :disabled="p._saving"
+                        class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500 disabled:opacity-50">
+                        {{ p._saving ? "…" : "Save" }}
+                      </button>
+                      <button v-else-if="p.admin_edited" @click="revertPrivate(emp, p)" :disabled="p._saving"
+                        class="text-xs text-slate-400 hover:text-slate-700 px-1" title="Revert to computed">↻</button>
+                    </td>
+                  </tr>
+                  <tr v-if="entriesOpen[privKey(emp, p.session_duration)]" class="bg-white">
+                    <td colspan="9" class="pl-20 pr-3 py-2">
+                      <p v-if="entriesLoading[privKey(emp, p.session_duration)]" class="text-xs text-slate-400">Loading…</p>
+                      <template v-else>
+                        <table class="w-full text-xs mb-2">
+                          <tbody>
+                            <tr v-for="s in entriesData[privKey(emp, p.session_duration)]" :key="s.id" class="text-slate-500">
+                              <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
+                              <td class="py-1">{{ s.class_name }}</td>
+                              <td class="py-1">{{ s.session_count }}× {{ s.session_duration }}min</td>
+                              <td class="py-1 text-right">{{ s.hours }}h</td>
+                              <td class="py-1 text-right w-24">
+                                <button @click="openEditEntry(emp, privKey(emp, p.session_duration), s)"
+                                  class="text-slate-400 hover:text-slate-700 mr-2">edit</button>
+                                <template v-if="confirmDeleteId === s.id">
+                                  <button @click="doDelete(emp, privKey(emp, p.session_duration), s.id)"
+                                    class="text-red-600 mr-1">✓</button>
+                                  <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                                </template>
+                                <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
+                              </td>
+                            </tr>
+                            <tr v-if="!entriesData[privKey(emp, p.session_duration)] || entriesData[privKey(emp, p.session_duration)].length === 0">
+                              <td colspan="5" class="py-1 text-slate-400">No private entries at this duration.</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <button @click="openAddEntry(emp, privKey(emp, p.session_duration), 'private', p.session_duration)"
+                          class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">+ Add entry</button>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </template>
             </template>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Add / Edit entry modal -->
+    <div v-if="showEntryModal"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
+      @click.self="closeEntryModal">
+      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
+        <h2 class="text-lg font-semibold text-slate-800 mb-4">
+          {{ entryModalMode === "add" ? "Add Entry" : "Edit Entry" }}
+          <span v-if="entryModalEmp" class="text-sm font-normal text-slate-500">— {{ entryModalEmp.employee_name }}</span>
+        </h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <input v-model="entryForm.entry_date" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Class &amp; Time</label>
+              <input v-model="entryForm.class_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+            <div class="w-24">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Room</label>
+              <input v-model="entryForm.teacher_room" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Category</label>
+            <select v-model="entryForm.category" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option :value="null">— none —</option>
+              <option v-for="cat in allCategories" :key="cat.id" :value="cat.name" class="capitalize">{{ cat.name }}</option>
+            </select>
+          </div>
+          <div v-if="!entryIsPrivate">
+            <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
+            <input v-model.number="entryForm.hours" type="number" step="0.25" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div v-else class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
+              <select v-model.number="entryForm.session_duration" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <option :value="null" disabled>Length…</option>
+                <option v-for="d in [20,30,45,60]" :key="d" :value="d">{{ d }} min</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-slate-600 mb-1"># Sessions</label>
+              <input v-model.number="entryForm.session_count" type="number" step="1" min="1" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+          </div>
+          <p v-if="entryModalError" class="text-red-600 text-sm">{{ entryModalError }}</p>
+          <div class="flex justify-end gap-3 pt-2">
+            <button @click="closeEntryModal"
+              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button @click="saveEntryModal" :disabled="savingModal"
+              class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+              {{ savingModal ? "Saving…" : "Save" }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
