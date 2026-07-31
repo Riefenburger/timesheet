@@ -4,6 +4,7 @@ mod entries;
 mod totals;
 mod rates;
 mod pay;
+mod categories;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
@@ -37,6 +38,9 @@ async fn main() {
         .route("/entries/categories", get(entries::my_categories))
         .route("/admin/pay", get(pay::list_pay))
         .route("/admin/totals", get(totals::list_totals))
+        .route("/categories", get(categories::list_categories))
+        .route("/admin/categories", post(categories::create_category))
+        .route("/admin/categories/{id}", put(categories::update_category).delete(categories::delete_category))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
