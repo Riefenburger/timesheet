@@ -4,6 +4,7 @@ mod entries;
 mod totals;
 mod rates;
 mod categories;
+mod auth_core;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
