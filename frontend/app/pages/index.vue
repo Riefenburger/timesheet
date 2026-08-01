@@ -157,7 +157,7 @@ onMounted(loadEmployees);
             </div>
             <div class="w-28">
               <label class="block text-sm font-medium text-slate-600 mb-1">Room #</label>
-              <input v-model="form.teacher_room" type="text" required
+              <input v-model="form.teacher_room" type="text" :required="!isPrivate"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
             <div class="w-40">
