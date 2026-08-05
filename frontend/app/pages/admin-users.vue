@@ -16,7 +16,7 @@ const saving = ref(false);
 const modalError = ref(null);
 const form = reactive({
   name: "", employee_number: "", email: "",
-  role: "user", pay_method: "payroll", is_salaried: false, salary: null,
+  role: "user", pay_method: "payroll", pay_frequency: "bimonthly", is_salaried: false, salary: null,
   _hasAccount: false,
 });
 
@@ -50,7 +50,7 @@ async function loadEmployees() {
 
 function resetForm() {
   form.name = ""; form.employee_number = ""; form.email = "";
-  form.role = "user"; form.pay_method = "payroll"; form.is_salaried = false; form.salary = null;
+  form.role = "user"; form.pay_method = "payroll"; form.pay_frequency = "bimonthly"; form.is_salaried = false; form.salary = null;
 }
 function openAdd() {
   editingId.value = null;
@@ -66,6 +66,7 @@ async function openEdit(emp) {
   form.email = emp.email ?? "";
   form.role = emp.role;
   form.pay_method = emp.pay_method;
+  form.pay_frequency = emp.pay_frequency;
   form.is_salaried = emp.is_salaried;
   form.salary = emp.salary;
   form._hasAccount = emp.has_account;
@@ -91,6 +92,7 @@ async function saveEmployee() {
     email: form.email.trim() === "" ? null : form.email.trim(),
     role: form.role,
     pay_method: form.pay_method,
+    pay_frequency: form.pay_frequency,
     is_salaried: form.is_salaried,
     salary: form.is_salaried ? Number(form.salary) : null,
   };
@@ -535,6 +537,14 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
                 <option value="check">Check</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Pay Frequency</label>
+            <select v-model="form.pay_frequency" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option value="weekly">Weekly</option>
+              <option value="bimonthly">Bi-monthly (1–15, 16–end)</option>
+              <option value="monthly">Monthly</option>
+            </select>
           </div>
           <div class="flex items-center gap-2 pt-1">
             <input v-model="form.is_salaried" type="checkbox" id="salaried" class="rounded" />

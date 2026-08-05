@@ -12,6 +12,7 @@ pub struct NewEmployee {
     email: Option<String>,
     role: String,
     pay_method: String,
+    pay_frequency: String,
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
@@ -26,6 +27,7 @@ pub struct Employee {
     google_sub: Option<String>,
     role: String,
     pay_method: String,
+    pay_frequency: String,
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
@@ -40,6 +42,7 @@ pub struct UpdateEmployee {
     email: Option<String>,
     role: String,
     pay_method: String,
+    pay_frequency: String,
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
@@ -69,11 +72,11 @@ pub async fn create_employee(
         Employee,
         r#"
         INSERT INTO employees
-            (name, employee_number, email, role, pay_method, is_salaried, salary)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (name, employee_number, email, role, pay_method, pay_frequency, is_salaried, salary)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary,
+            role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             created_at
         "#,
@@ -82,6 +85,7 @@ pub async fn create_employee(
         payload.email,
         payload.role,
         payload.pay_method,
+        payload.pay_frequency,
         payload.is_salaried,
         payload.salary,
     )
@@ -99,7 +103,7 @@ pub async fn list_employees(
         r#"
         SELECT
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary,
+            role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             created_at
         FROM employees
@@ -169,11 +173,12 @@ pub async fn update_employee(
         r#"
         UPDATE employees
         SET name = $1, employee_number = $2, email = $3,
-            role = $4, pay_method = $5, is_salaried = $6, salary = $7
-        WHERE id = $8
+            role = $4, pay_method = $5, pay_frequency = $6,
+            is_salaried = $7, salary = $8
+        WHERE id = $9
         RETURNING
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary,
+            role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             created_at
         "#,
@@ -182,6 +187,7 @@ pub async fn update_employee(
         payload.email,
         payload.role,
         payload.pay_method,
+        payload.pay_frequency,
         payload.is_salaried,
         payload.salary,
         employee_id,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        ",
+  "query": "\n        UPDATE employees\n        SET name = $1, employee_number = $2, email = $3,\n            role = $4, pay_method = $5, pay_frequency = $6,\n            is_salaried = $7, salary = $8\n        WHERE id = $9\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "pay_frequency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "pay_frequency"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -103,13 +114,13 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "has_account!",
         "type_info": "Bool",
         "origin": "Expression"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -127,8 +138,10 @@
         "Text",
         "Text",
         "Text",
+        "Text",
         "Bool",
-        "Numeric"
+        "Numeric",
+        "Int8"
       ]
     },
     "nullable": [
@@ -140,10 +153,11 @@
       false,
       false,
       false,
+      false,
       true,
       null,
       false
     ]
   },
-  "hash": "356d39e537181affac82862ce338760dd2d0132a6b079e97f23eeb40c1623775"
+  "hash": "87f75be47f72a90d19df1d0a9d3392549de3dfc787dbabb27bb1452c283c0a2b"
 }

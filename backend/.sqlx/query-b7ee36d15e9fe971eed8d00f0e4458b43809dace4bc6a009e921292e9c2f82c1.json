@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        FROM employees\n        ORDER BY name\n        ",
+  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, pay_frequency, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "pay_frequency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "pay_frequency"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -103,13 +114,13 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "has_account!",
         "type_info": "Bool",
         "origin": "Expression"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -121,7 +132,16 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Numeric"
+      ]
     },
     "nullable": [
       false,
@@ -132,10 +152,11 @@
       false,
       false,
       false,
+      false,
       true,
       null,
       false
     ]
   },
-  "hash": "0def838ded5def2cb3304de4394b769df9ad08c7449aadf32a5ffa313d3d0f7a"
+  "hash": "b7ee36d15e9fe971eed8d00f0e4458b43809dace4bc6a009e921292e9c2f82c1"
 }
