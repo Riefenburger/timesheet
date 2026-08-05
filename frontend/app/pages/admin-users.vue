@@ -88,7 +88,7 @@ async function saveEmployee() {
   }
   const body = {
     name: form.name,
-    employee_number: form.employee_number,
+    employee_number: form.employee_number.trim() === "" ? null : form.employee_number.trim(),
     email: form.email.trim() === "" ? null : form.email.trim(),
     role: form.role,
     pay_method: form.pay_method,
@@ -514,8 +514,8 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             <input v-model="form.name" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Employee #</label>
-            <input v-model="form.employee_number" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <label class="block text-sm font-medium text-slate-600 mb-1">Employee # <span class="text-slate-400 font-normal">(payroll only)</span></label>
+            <input v-model="form.employee_number" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Email (optional)</label>

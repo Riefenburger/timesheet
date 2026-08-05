@@ -583,7 +583,7 @@ pub async fn compute_totals(
         result.push(EmployeeTotals {
             employee_id: emp.id,
             employee_name: emp.name.clone(),
-            employee_number: emp.employee_number.clone(),
+            employee_number: emp.employee_number.clone().unwrap_or_default(),
             pay_method: emp.pay_method.clone(),
             pay_frequency: emp.pay_frequency.clone(),
             categories,

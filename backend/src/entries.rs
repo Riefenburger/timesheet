@@ -81,7 +81,7 @@ pub struct AdminTimeEntry {
     id: i64,
     employee_id: i64,
     employee_name: String,
-    employee_number: String,
+    employee_number: Option<String>,
     entry_date: NaiveDate,
     class_name: String,
     teacher_room: String,

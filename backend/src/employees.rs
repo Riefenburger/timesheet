@@ -8,7 +8,7 @@ use crate::auth::SuperAdminEmployee;
 #[derive(Deserialize)]
 pub struct NewEmployee {
     name: String,
-    employee_number: String,
+    employee_number: Option<String>,
     email: Option<String>,
     role: String,
     pay_method: String,
@@ -22,7 +22,7 @@ pub struct NewEmployee {
 pub struct Employee {
     id: i64,
     name: String,
-    employee_number: String,
+    employee_number: Option<String>,
     email: Option<String>,
     google_sub: Option<String>,
     role: String,
@@ -38,7 +38,7 @@ pub struct Employee {
 #[derive(Deserialize)]
 pub struct UpdateEmployee {
     name: String,
-    employee_number: String,
+    employee_number: Option<String>,
     email: Option<String>,
     role: String,
     pay_method: String,
@@ -54,18 +54,18 @@ pub async fn create_employee(
     Json(payload): Json<NewEmployee>,
 ) -> Result<(StatusCode, Json<Employee>), (StatusCode, String)> {
     // Friendly check: is the employee number already taken?
-    let conflict = sqlx::query!(
-        "SELECT name FROM employees WHERE employee_number = $1",
-        payload.employee_number
-    )
-    .fetch_optional(&pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    if let Some(row) = conflict {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("Employee number {} is already used by {}.", payload.employee_number, row.name),
-        ));
+    if let Some(ref num) = payload.employee_number {
+        let conflict = sqlx::query!(
+            "SELECT name FROM employees WHERE employee_number = $1", num
+        )
+        .fetch_optional(&pool).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if let Some(row) = conflict {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("Employee number {} is already used by {}.", num, row.name),
+            ));
+        }
     }
 
     let employee = sqlx::query_as!(
@@ -152,19 +152,19 @@ pub async fn update_employee(
     }
 
     // --- Friendly check: is the employee number taken by someone else? ---
-    let conflict = sqlx::query!(
-        "SELECT name FROM employees WHERE employee_number = $1 AND id != $2",
-        payload.employee_number,
-        employee_id
-    )
-    .fetch_optional(&pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    if let Some(row) = conflict {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("Employee number {} is already used by {}.", payload.employee_number, row.name),
-        ));
+    if let Some(ref num) = payload.employee_number {
+        let conflict = sqlx::query!(
+            "SELECT name FROM employees WHERE employee_number = $1 AND id != $2",
+            num, employee_id
+        )
+        .fetch_optional(&pool).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if let Some(row) = conflict {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("Employee number {} is already used by {}.", num, row.name),
+            ));
+        }
     }
 
     // --- Do the update ---
