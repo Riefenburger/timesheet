@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, duration_minutes, global_rate FROM private_durations ORDER BY duration_minutes",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "private_durations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "duration_minutes",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "private_durations",
+            "name": "duration_minutes"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "global_rate",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "private_durations",
+            "name": "global_rate"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4a2e74fa59c96989af5eb0de9cda2be862ee57ffcf977b75b2cc8fcc34d86510"
+}

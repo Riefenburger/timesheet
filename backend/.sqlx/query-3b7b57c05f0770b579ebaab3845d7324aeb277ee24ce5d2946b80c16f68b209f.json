@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT duration_minutes FROM private_durations",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "duration_minutes",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "private_durations",
+            "name": "duration_minutes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3b7b57c05f0770b579ebaab3845d7324aeb277ee24ce5d2946b80c16f68b209f"
+}

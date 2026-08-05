@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE private_durations SET global_rate = $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f7fad28b0f072418d27848300a50b1979868f227b53e1883e4e70f17f8951f78"
+}

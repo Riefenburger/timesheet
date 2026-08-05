@@ -15,9 +15,6 @@ fn resolve_hours(
 ) -> Result<(Decimal, Option<i32>, Option<i32>), String> {
     match (session_duration, session_count) {
         (Some(dur), Some(count)) => {
-            if ![20, 30, 45, 60].contains(&dur) {
-                return Err("Invalid session duration.".to_string());
-            }
             if count <= 0 {
                 return Err("Session count must be positive.".to_string());
             }
@@ -28,6 +25,20 @@ fn resolve_hours(
         (None, None) => Ok((hours, None, None)),
         _ => Err("Private sessions need both a duration and a count.".to_string()),
     }
+}
+
+// The duration CHECK is gone; validate against the managed tier list instead.
+async fn validate_duration(pool: &PgPool, duration: i32) -> Result<(), (StatusCode, String)> {
+    let exists = sqlx::query_scalar!(
+        "SELECT 1 AS one FROM private_durations WHERE duration_minutes = $1",
+        duration
+    )
+    .fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if exists.is_none() {
+        return Err((StatusCode::BAD_REQUEST, format!("{} minutes is not a valid private duration.", duration)));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -131,6 +142,9 @@ pub async fn admin_create_entry(
     let (hours, duration, count) = resolve_hours(
         payload.hours, payload.session_duration, payload.session_count,
     ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(dur) = duration {
+        validate_duration(&pool, dur).await?;
+    }
 
     sqlx::query!(
         r#"
@@ -188,6 +202,9 @@ pub async fn admin_edit_entry(
     let (hours, duration, count) = resolve_hours(
         payload.hours, payload.session_duration, payload.session_count,
     ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(dur) = duration {
+        validate_duration(&pool, dur).await?;
+    }
 
     let result = sqlx::query!(
         r#"
@@ -227,6 +244,9 @@ pub async fn create_entry(
     let (hours, duration, count) = resolve_hours(
         payload.hours, payload.session_duration, payload.session_count,
     ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(dur) = duration {
+        validate_duration(&pool, dur).await?;
+    }
 
     let entry = sqlx::query_as!(
         TimeEntry,
@@ -372,6 +392,14 @@ pub async fn my_categories(
     State(pool): State<PgPool>,
     current: CurrentEmployee,
 ) -> Result<Json<MyCategories>, (StatusCode, String)> {
+        // Valid duration tiers (for filtering the employee's private_NN rates).
+    let valid_durations: Vec<i32> = sqlx::query_scalar!(
+        r#"SELECT duration_minutes FROM private_durations"#
+    )
+    .fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // The employee's rate labels (normal categories + private_NN).
     let labels: Vec<String> = sqlx::query_scalar!(
         r#"SELECT DISTINCT label FROM employee_rates WHERE employee_id = $1 ORDER BY label"#,
         current.id
@@ -385,7 +413,7 @@ pub async fn my_categories(
     for label in labels {
         if let Some(rest) = label.strip_prefix("private_") {
             if let Ok(dur) = rest.parse::<i32>() {
-                if [20, 30, 45, 60].contains(&dur) {
+                if valid_durations.contains(&dur) {
                     private_durations.push(dur);
                 }
             }

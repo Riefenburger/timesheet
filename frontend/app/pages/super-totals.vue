@@ -227,6 +227,14 @@ async function loadCategoryList() {
   catch (e) { allCategories.value = []; }
 }
 
+const durationMinutes = ref([]);
+async function loadDurations() {
+  try {
+    const d = await $fetch("/api/private-durations");
+    durationMinutes.value = d.map((x) => x.duration_minutes);
+  } catch (e) { durationMinutes.value = []; }
+}
+
 const showEntryModal = ref(false);
 const entryModalMode = ref("edit");
 const entryModalEmp = ref(null);
@@ -368,7 +376,7 @@ function pickPeriod(half) {
 }
 function changePeriod(fn) { fn(); loadTotals(); }
 
-onMounted(() => { loadTotals(); loadCategoryList(); });
+onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
 </script>
 
 <template>
@@ -460,7 +468,7 @@ onMounted(() => { loadTotals(); loadCategoryList(); });
                   <span class="ml-1 text-xs text-slate-400 capitalize">({{ emp.pay_method }})</span>
                 </td>
                 <td></td>
-                <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "regular_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-slate-800">{{ (sumField(emp, "regular_hours") + privateHours(emp)).toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "overtime_hours").toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "sick_hours").toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right text-slate-400">{{ sumField(emp, "logged_hours").toFixed(2) }}</td>
@@ -683,7 +691,7 @@ onMounted(() => { loadTotals(); loadCategoryList(); });
               <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
               <select v-model.number="entryForm.session_duration" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                 <option :value="null" disabled>Length…</option>
-                <option v-for="d in [20,30,45,60]" :key="d" :value="d">{{ d }} min</option>
+                <option v-for="d in durationMinutes" :key="d" :value="d">{{ d }} min</option>
               </select>
             </div>
             <div class="flex-1">

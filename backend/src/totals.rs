@@ -354,6 +354,10 @@ pub struct EmployeeTotals {
     competition_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     coaching_earn: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
+    private_regular_hours: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
+    private_overtime_hours: Decimal,
     rates: Vec<RateEntry>,
 }
 
@@ -547,6 +551,12 @@ pub async fn list_totals(
         let (other, competition, coaching) = dollar_map.get(&emp.id).copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
 
+        // Private's reg/OT hours come from the same overtime walk (private entries
+        // participate in it). We skipped private as a category row, but its hours
+        // still roll into the header totals.
+        let (priv_reg, priv_ot) = computed.get("private").copied()
+            .unwrap_or((Decimal::ZERO, Decimal::ZERO));
+
         result.push(EmployeeTotals {
             employee_id: emp.id,
             employee_name: emp.name.clone(),
@@ -555,6 +565,8 @@ pub async fn list_totals(
             categories,
             private_sessions,
             other_earn: other, competition_earn: competition, coaching_earn: coaching,
+            private_regular_hours: priv_reg,
+            private_overtime_hours: priv_ot,
             rates: rate_map.get(&emp.id).cloned().unwrap_or_default(),
         });
     }

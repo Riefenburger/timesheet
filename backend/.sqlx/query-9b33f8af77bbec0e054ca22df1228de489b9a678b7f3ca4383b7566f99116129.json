@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO private_durations (duration_minutes, global_rate) VALUES ($1, $2)\n           ON CONFLICT (duration_minutes) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9b33f8af77bbec0e054ca22df1228de489b9a678b7f3ca4383b7566f99116129"
+}

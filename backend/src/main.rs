@@ -6,6 +6,7 @@ mod rates;
 mod categories;
 mod auth_core;
 mod auth_routes;
+mod private_durations;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
@@ -51,6 +52,9 @@ async fn main() {
         .route("/auth/invite/{token}", get(auth_routes::check_invite))
         .route("/auth/signup", post(auth_routes::signup))
         .route("/admin/employees/{id}/reset-account", post(auth_routes::reset_account))
+        .route("/private-durations", get(private_durations::list_durations))
+        .route("/admin/private-durations", post(private_durations::create_duration))
+        .route("/admin/private-durations/{id}", put(private_durations::update_duration).delete(private_durations::delete_duration))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

@@ -24,7 +24,13 @@ const rates = ref([]);
 const ratesLoading = ref(false);
 const rateError = ref(null);
 
-const DURATIONS = [20, 30, 45, 60];
+// Dynamic private duration tiers (fetched from the backend).
+const durations = ref([]); // [{ id, duration_minutes, global_rate }]
+const durationMinutes = computed(() => durations.value.map((d) => d.duration_minutes));
+async function loadDurations() {
+  try { durations.value = await $fetch("/api/private-durations"); }
+  catch (e) { durations.value = []; }
+}
 
 function roleLabel(r) {
   return { user: "User", admin: "Admin", super_admin: "Super Admin" }[r] || r;
@@ -91,12 +97,18 @@ async function saveEmployee() {
   saving.value = true;
   try {
     if (editingId.value === null) {
-      await $fetch("/api/admin/employees", { method: "POST", body });
+      // Create → capture the new id and switch into edit mode so rates can be added.
+      const created = await $fetch("/api/admin/employees", { method: "POST", body });
+      await loadEmployees();
+      editingId.value = created.id;
+      form._hasAccount = created.has_account;
+      await loadRates(created.id);
+      // Modal stays open, now in edit mode with the rates section visible.
     } else {
       await $fetch(`/api/admin/employees/${editingId.value}`, { method: "PUT", body });
+      closeModal();
+      await loadEmployees();
     }
-    closeModal();
-    await loadEmployees();
   } catch (e) {
     modalError.value = (e && e.data) ? String(e.data) : "Could not save. Check the fields and try again.";
   } finally {
@@ -183,7 +195,7 @@ const privateRates = computed(() => {
   for (const r of rates.value) {
     if (r.label.startsWith("private_")) {
       const dur = Number(r.label.slice("private_".length));
-      if (DURATIONS.includes(dur)) m[dur] = r;
+      if (durationMinutes.value.includes(dur)) m[dur] = r;
     }
   }
   return m;
@@ -201,7 +213,7 @@ const availableCategories = computed(() =>
 // Add-rate form.
 const newRate = reactive({ label: "", amount: null });
 // Private add form: one amount per not-yet-set duration.
-const newPrivate = reactive({ 20: null, 30: null, 45: null, 60: null });
+const newPrivate = reactive({}); // duration -> amount, keyed dynamically
 const showPrivateAdd = ref(false);
 
 async function addRate() {
@@ -226,7 +238,7 @@ async function addRate() {
 // Save all filled-in private duration amounts (add or update).
 async function savePrivateRates() {
   rateError.value = null;
-  const toSave = DURATIONS.filter((d) => newPrivate[d] !== null && Number(newPrivate[d]) > 0);
+  const toSave = durationMinutes.value.filter((d) => newPrivate[d] !== null && Number(newPrivate[d]) > 0);
   if (toSave.length === 0) { rateError.value = "Enter at least one duration rate."; return; }
   try {
     for (const d of toSave) {
@@ -273,6 +285,22 @@ async function deleteRate(rate) {
   }
 }
 
+// Global rate for a given duration (from the durations tiers).
+function globalRateFor(minutes) {
+  const d = durations.value.find((x) => x.duration_minutes === minutes);
+  return d ? Number(d.global_rate) : 0;
+}
+
+// Open the private-add panel, pre-filling each duration from the employee's
+// existing override if set, otherwise the global default.
+function openPrivateAdd() {
+  for (const m of durationMinutes.value) {
+    const existing = privateRates.value[m];
+    newPrivate[m] = existing ? Number(existing.amount) : globalRateFor(m);
+  }
+  showPrivateAdd.value = true;
+}
+
 // ---- Global category management modal ----
 const showCatModal = ref(false);
 const catError = ref(null);
@@ -313,7 +341,57 @@ async function deleteCategory(cat) {
   }
 }
 
-onMounted(() => { loadEmployees(); loadCategories(); });
+// ---- Private duration management (in the category modal) ----
+const showDurationPanel = ref(false);
+const durError = ref(null);
+const newDuration = reactive({ minutes: null, rate: null });
+
+function toggleDurationPanel() {
+  showDurationPanel.value = !showDurationPanel.value;
+  durError.value = null;
+}
+
+async function addDuration() {
+  durError.value = null;
+  if (!newDuration.minutes || Number(newDuration.minutes) <= 0) {
+    durError.value = "Enter a duration in minutes."; return;
+  }
+  try {
+    await $fetch("/api/admin/private-durations", {
+      method: "POST",
+      body: { duration_minutes: Number(newDuration.minutes), global_rate: Number(newDuration.rate) || 0 },
+    });
+    newDuration.minutes = null; newDuration.rate = null;
+    await loadDurations();
+  } catch (e) {
+    durError.value = (e && e.data) ? String(e.data) : "Could not add duration.";
+  }
+}
+
+async function saveDurationRate(dur) {
+  durError.value = null;
+  try {
+    await $fetch(`/api/admin/private-durations/${dur.id}`, {
+      method: "PUT",
+      body: { global_rate: Number(dur.global_rate) || 0 },
+    });
+    await loadDurations();
+  } catch (e) {
+    durError.value = (e && e.data) ? String(e.data) : "Could not update rate.";
+  }
+}
+
+async function deleteDuration(dur) {
+  durError.value = null;
+  try {
+    await $fetch(`/api/admin/private-durations/${dur.id}`, { method: "DELETE" });
+    await loadDurations();
+  } catch (e) {
+    durError.value = (e && e.data) ? String(e.data) : "Could not delete duration.";
+  }
+}
+
+onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
 </script>
 
 <template>
@@ -462,14 +540,6 @@ onMounted(() => { loadEmployees(); loadCategories(); });
             <input v-model.number="form.salary" type="number" step="0.01" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <p v-if="modalError" class="text-red-600 text-sm">{{ modalError }}</p>
-          <div class="flex justify-end gap-3 pt-2">
-            <button type="button" @click="closeModal"
-              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-            <button type="submit" :disabled="saving"
-              class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-              {{ saving ? "Saving…" : "Save" }}
-            </button>
-          </div>
         </form>
 
         <!-- Rates: edit mode only -->
@@ -494,7 +564,7 @@ onMounted(() => { loadEmployees(); loadCategories(); });
             <!-- Private rates (grouped by duration) -->
             <div v-if="hasAnyPrivate" class="mt-3 mb-2">
               <div class="text-xs font-medium text-slate-500 mb-1">Private (per duration)</div>
-              <div v-for="d in DURATIONS" :key="d">
+              <div v-for="d in durationMinutes" :key="d">
                 <div v-if="privateRates[d]" class="flex items-center gap-2 mb-2">
                   <span class="w-24 text-sm text-slate-700">{{ d }} min</span>
                   <span class="text-slate-400">$</span>
@@ -520,13 +590,13 @@ onMounted(() => { loadEmployees(); loadCategories(); });
 
             <!-- Add / set private rates -->
             <div class="mt-3">
-              <button v-if="!showPrivateAdd" @click="showPrivateAdd = true"
+              <button v-if="!showPrivateAdd" @click="openPrivateAdd"
                 class="text-xs text-indigo-600 hover:text-indigo-800">
                 {{ hasAnyPrivate ? "+ Edit private durations" : "+ Add private rates" }}
               </button>
               <div v-else class="border border-slate-200 rounded-lg p-3 mt-1">
                 <div class="text-xs font-medium text-slate-500 mb-2">Set a rate for each private duration (leave blank to skip):</div>
-                <div v-for="d in DURATIONS" :key="d" class="flex items-center gap-2 mb-2">
+                <div v-for="d in durationMinutes" :key="d" class="flex items-center gap-2 mb-2">
                   <span class="w-20 text-sm text-slate-700">{{ d }} min</span>
                   <span class="text-slate-400">$</span>
                   <input v-model.number="newPrivate[d]" type="number" step="0.01" min="0"
@@ -543,6 +613,18 @@ onMounted(() => { loadEmployees(); loadCategories(); });
             <p v-if="rateError" class="text-red-600 text-sm mt-2">{{ rateError }}</p>
           </template>
         </div>
+        <!-- (Categories & Rates section ends here) -->
+
+        <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-100">
+          <button type="button" @click="closeModal"
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            {{ editingId === null ? "Cancel" : "Done" }}
+          </button>
+          <button type="button" @click="saveEmployee" :disabled="saving"
+            class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {{ saving ? "Saving…" : (editingId === null ? "Save & add rates" : "Save") }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -558,8 +640,33 @@ onMounted(() => { loadEmployees(); loadCategories(); });
               {{ cat.name }}
               <span v-if="cat.is_private" class="text-xs text-indigo-500 ml-1">(private)</span>
             </span>
-            <button v-if="!cat.is_private" @click="deleteCategory(cat)" class="text-xs text-red-500 hover:text-red-700">delete</button>
+            <button v-if="cat.is_private" @click="toggleDurationPanel"
+              class="text-xs text-indigo-600 hover:text-indigo-800">
+              {{ showDurationPanel ? "Hide durations" : "Edit durations" }}
+            </button>
+            <button v-else @click="deleteCategory(cat)" class="text-xs text-red-500 hover:text-red-700">delete</button>
           </div>
+        </div>
+        <!-- Private duration management -->
+        <div v-if="showDurationPanel" class="mb-4 p-3 rounded-lg bg-indigo-50/50 border border-indigo-100">
+          <div class="text-xs font-medium text-slate-600 mb-2">Private duration tiers &amp; global rates</div>
+          <div v-for="dur in durations" :key="dur.id" class="flex items-center gap-2 mb-2">
+            <span class="w-16 text-sm text-slate-700">{{ dur.duration_minutes }} min</span>
+            <span class="text-slate-400">$</span>
+            <input v-model.number="dur.global_rate" type="number" step="0.01" min="0"
+              class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+            <button @click="saveDurationRate(dur)" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
+            <button @click="deleteDuration(dur)" class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 ml-1">Remove</button>
+          </div>
+          <div class="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-100">
+            <input v-model.number="newDuration.minutes" type="number" min="1" placeholder="min"
+              class="w-16 rounded border border-slate-300 px-2 py-1 text-sm" />
+            <span class="text-slate-400">$</span>
+            <input v-model.number="newDuration.rate" type="number" step="0.01" min="0" placeholder="rate"
+              class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
+            <button @click="addDuration" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
+          </div>
+          <p v-if="durError" class="text-red-600 text-xs mt-2">{{ durError }}</p>
         </div>
         <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
           <input v-model="newCat.name" type="text" placeholder="New category name"
