@@ -304,7 +304,7 @@ function openPrivateAdd() {
 // ---- Global category management modal ----
 const showCatModal = ref(false);
 const catError = ref(null);
-const newCat = reactive({ name: "", is_private: false });
+const newCat = reactive({ name: "", is_private: false, is_lump_sum: false });
 const catSaving = ref(false);
 
 function openCatModal() {
@@ -321,9 +321,9 @@ async function addCategory() {
   try {
     await $fetch("/api/admin/categories", {
       method: "POST",
-      body: { name: newCat.name.trim(), is_private: newCat.is_private },
+      body: { name: newCat.name.trim(), is_private: newCat.is_private, is_lump_sum: newCat.is_lump_sum },
     });
-    newCat.name = ""; newCat.is_private = false;
+    newCat.name = ""; newCat.is_private = false; newCat.is_lump_sum = false;
     await loadCategories();
   } catch (e) {
     catError.value = (e && e.data) ? String(e.data) : "Could not add category.";
@@ -389,6 +389,11 @@ async function deleteDuration(dur) {
   } catch (e) {
     durError.value = (e && e.data) ? String(e.data) : "Could not delete duration.";
   }
+}
+
+// Is this rate label a lump-sum category? (Its "rate" is a flat per-entry amount.)
+function isLumpSumLabel(label) {
+  return categories.value.some((c) => c.name === label && c.is_lump_sum);
 }
 
 onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
@@ -553,7 +558,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
 
             <!-- Normal rates -->
             <div v-for="rate in normalRates" :key="rate.id" class="flex items-center gap-2 mb-2">
-              <span class="w-24 text-sm text-slate-700 capitalize">{{ rate.label }}</span>
+              <span class="w-24 text-sm text-slate-700 capitalize">
+                {{ rate.label }}
+                <span v-if="isLumpSumLabel(rate.label)" class="text-xs text-amber-600 normal-case">(flat)</span>
+              </span>
               <span class="text-slate-400">$</span>
               <input v-model.number="rate.amount" type="number" step="0.01" min="0"
                 class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
@@ -639,6 +647,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             <span class="text-sm text-slate-700 capitalize">
               {{ cat.name }}
               <span v-if="cat.is_private" class="text-xs text-indigo-500 ml-1">(private)</span>
+              <span v-if="cat.is_lump_sum" class="text-xs text-amber-600 ml-1">(lump-sum)</span>
             </span>
             <button v-if="cat.is_private" @click="toggleDurationPanel"
               class="text-xs text-indigo-600 hover:text-indigo-800">
@@ -668,11 +677,17 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           </div>
           <p v-if="durError" class="text-red-600 text-xs mt-2">{{ durError }}</p>
         </div>
-        <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
-          <input v-model="newCat.name" type="text" placeholder="New category name"
-            class="flex-1 rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button @click="addCategory" :disabled="catSaving"
-            class="text-sm bg-emerald-600 text-white rounded px-3 py-2 hover:bg-emerald-500 disabled:opacity-50">Add</button>
+        <div class="pt-3 border-t border-slate-100">
+          <div class="flex items-center gap-2">
+            <input v-model="newCat.name" type="text" placeholder="New category name"
+              class="flex-1 rounded border border-slate-300 px-3 py-2 text-sm" />
+            <button @click="addCategory" :disabled="catSaving"
+              class="text-sm bg-emerald-600 text-white rounded px-3 py-2 hover:bg-emerald-500 disabled:opacity-50">Add</button>
+          </div>
+          <label class="flex items-center gap-2 mt-2 text-xs text-slate-600">
+            <input v-model="newCat.is_lump_sum" type="checkbox" class="rounded" />
+            Lump-sum category (flat amount per entry, no hours)
+          </label>
         </div>
         <p v-if="catError" class="text-red-600 text-sm mt-2">{{ catError }}</p>
         <div class="flex justify-end mt-4">

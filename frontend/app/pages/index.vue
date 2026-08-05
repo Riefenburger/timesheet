@@ -18,6 +18,7 @@ const form = reactive({
 const myCategories = ref([]);
 const privateDurations = ref([]);
 const isPrivate = computed(() => form.category === "private");
+const isLumpSum = computed(() => lumpSumCategories.value.includes(form.category));
 
 const { start, end } = usePayPeriod();
 
@@ -46,6 +47,16 @@ async function loadMyCategories() {
   }
 }
 
+const lumpSumCategories = ref([]); // names of categories flagged is_lump_sum
+async function loadLumpSumFlags() {
+  try {
+    const all = await $fetch("/api/categories");
+    lumpSumCategories.value = all.filter((c) => c.is_lump_sum).map((c) => c.name);
+  } catch (e) {
+    lumpSumCategories.value = [];
+  }
+}
+
 function resetForm() {
   form.entry_date = "";
   form.class_name = "";
@@ -60,11 +71,11 @@ async function addEntry() {
   error.value = null;
   const body = {
     entry_date: form.entry_date,
-    class_name: form.class_name,
-    teacher_room: form.teacher_room,
+    class_name: isLumpSum.value ? "" : form.class_name,
+    teacher_room: isLumpSum.value ? "" : form.teacher_room,
     details: "",
     category: form.category,
-    hours: isPrivate.value ? 0 : form.hours,
+    hours: (isPrivate.value || isLumpSum.value) ? 0 : form.hours,
     session_duration: isPrivate.value ? form.session_duration : null,
     session_count: isPrivate.value ? form.session_count : null,
   };
@@ -86,6 +97,7 @@ watch(() => form.category, () => {
 onMounted(() => {
   loadEntries();
   loadMyCategories();
+  loadLumpSumFlags();
 });
 </script>
 
@@ -100,14 +112,14 @@ onMounted(() => {
       <form @submit.prevent="addEntry" class="bg-white rounded-2xl shadow p-6 mb-8">
         <fieldset class="space-y-4">
           <div class="flex gap-4">
-            <div class="flex-1">
+            <div v-if="!isLumpSum" class="flex-1">
               <label class="block text-sm font-medium text-slate-600 mb-1">Class Name &amp; Time</label>
-              <input v-model="form.class_name" type="text" required
+              <input v-model="form.class_name" type="text" :required="!isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
-            <div class="w-28">
+            <div v-if="!isLumpSum" class="w-28">
               <label class="block text-sm font-medium text-slate-600 mb-1">Room #</label>
-              <input v-model="form.teacher_room" type="text" :required="!isPrivate"
+              <input v-model="form.teacher_room" type="text" :required="!isPrivate && !isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
             <div class="w-40">
@@ -127,13 +139,12 @@ onMounted(() => {
                 <option v-if="privateDurations.length" value="private">private</option>
               </select>
             </div>
-
-            <div v-if="!isPrivate" class="w-28">
+            <div v-if="!isPrivate && !isLumpSum" class="w-28">
               <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
-              <input v-model.number="form.hours" type="number" step="0.25" min="0" :required="!isPrivate"
+              <input v-model.number="form.hours" type="number" step="0.25" min="0" :required="!isPrivate && !isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
-            <template v-else>
+            <template v-else-if="isPrivate">
               <div class="w-32">
                 <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
                 <select v-model.number="form.session_duration" :required="isPrivate"

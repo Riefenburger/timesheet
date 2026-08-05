@@ -28,6 +28,14 @@ pub struct OvertimeSplit {
     pub overtime: Decimal,
 }
 
+#[derive(Serialize, Clone)]
+pub struct LumpSumRow {
+    category: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    amount: Decimal,       // computed dollars for this lump-sum category this period
+    entry_count: i64,
+}
+
 // The Sunday that starts the Sun–Sat week containing `d`.
 fn week_start(d: NaiveDate) -> NaiveDate {
     // chrono: Mon=0 .. Sun=6 via num_days_from_monday; we want days since Sunday.
@@ -356,6 +364,7 @@ pub struct EmployeeTotals {
     coaching_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     lump_sum_earn: Decimal,
+    lump_sums: Vec<LumpSumRow>,
     #[serde(with = "rust_decimal::serde::float")]
     private_regular_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
@@ -491,16 +500,21 @@ pub async fn list_totals(
             .push(RateEntry { label: r.label.clone(), amount: r.amount });
     }
 
-    // Per-employee lump-sum dollars: for each lump-sum entry count, multiply by
-    // that employee's assigned amount (their rate for that category).
+    // Per-employee lump-sum dollars, both itemized (per category) and totaled.
     let mut lump_dollars: HashMap<i64, Decimal> = HashMap::new();
+    let mut lump_rows: HashMap<i64, Vec<LumpSumRow>> = HashMap::new();
     for le in &lump_entries {
         let amount = rate_map.get(&le.employee_id)
             .and_then(|rates| rates.iter().find(|r| r.label == le.category))
             .map(|r| r.amount)
             .unwrap_or(Decimal::ZERO);
-        *lump_dollars.entry(le.employee_id).or_insert(Decimal::ZERO)
-            += amount * Decimal::from(le.count);
+        let line_total = amount * Decimal::from(le.count);
+        *lump_dollars.entry(le.employee_id).or_insert(Decimal::ZERO) += line_total;
+        lump_rows.entry(le.employee_id).or_default().push(LumpSumRow {
+            category: le.category.clone(),
+            amount: line_total,
+            entry_count: le.count,
+        });
     }
 
     // Group worked entries by employee for the overtime walk.
@@ -543,6 +557,8 @@ pub async fn list_totals(
         for cat in &cat_names {
             // Skip the private pseudo-category here — privates handled separately.
             if cat == "private" { continue; }
+            // Skip lump-sum categories — they get their own dollar rows.
+            if lump_sum_cats.contains(cat) { continue; }
             let logged = logged_cat.get(cat).copied().unwrap_or(Decimal::ZERO);
             if let Some((reg, ot, sick)) = stored_map.get(&emp.id).and_then(|m| m.get(cat)).copied() {
                 // Admin override.
@@ -600,6 +616,7 @@ pub async fn list_totals(
             private_sessions,
             other_earn: other, competition_earn: competition, coaching_earn: coaching,
             lump_sum_earn: lump,
+            lump_sums: lump_rows.get(&emp.id).cloned().unwrap_or_default(),
             private_regular_hours: priv_reg,
             private_overtime_hours: priv_ot,
             rates: rate_map.get(&emp.id).cloned().unwrap_or_default(),

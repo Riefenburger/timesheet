@@ -37,6 +37,10 @@ async function loadTotals() {
         _count: Number(p.session_count),
         _saving: false,
       })),
+      lumpSums: (emp.lump_sums || []).map((l) => ({
+        ...l,
+        amount: Number(l.amount),
+      })),
     }));
   } catch (e) {
     error.value = "Could not load totals — are you an admin?";
@@ -454,6 +458,10 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                 <td class="px-3 py-2 text-right">
                   <input v-model.number="emp._other" type="number" step="0.01" min="0"
                     class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
+                  <div v-if="Number(emp.lump_sum_earn) > 0" class="text-xs text-amber-600 mt-1">
+                    +${{ Number(emp.lump_sum_earn).toFixed(2) }} lump<br>
+                    = ${{ (emp._other + Number(emp.lump_sum_earn)).toFixed(2) }}
+                  </div>
                 </td>
                 <td class="px-3 py-2 text-right">
                   <input v-model.number="emp._comp" type="number" step="0.01" min="0"
@@ -615,6 +623,53 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                     </td>
                   </tr>
                 </template>
+              </template>
+              <!-- Lump-sum category rows -->
+              <template v-for="l in emp.lumpSums" :key="emp.employee_id + '-lump-' + l.category">
+                <tr class="bg-amber-50/40">
+                  <td class="pl-8 pr-3 py-2 text-slate-600 capitalize">
+                    <button @click="toggleCategoryEntries(emp, l.category)"
+                      class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                      {{ entriesOpen[catKey(emp, l.category)] ? "▾" : "▸" }}
+                    </button>
+                    {{ l.category }}
+                    <span class="ml-1 text-xs text-amber-600">(lump-sum · {{ l.entry_count }})</span>
+                  </td>
+                  <td class="px-3 py-2 text-right text-slate-500">
+                    <span v-if="catRate(emp, l.category) !== null">${{ catRate(emp, l.category).toFixed(2) }}</span>
+                    <span v-else class="text-red-400 text-xs">no amount</span>
+                  </td>
+                  <td colspan="4"></td>
+                  <td class="px-3 py-2 text-right text-slate-700 font-medium">${{ l.amount.toFixed(2) }}</td>
+                  <td colspan="3"></td>
+                </tr>
+                <tr v-if="entriesOpen[catKey(emp, l.category)]" class="bg-white">
+                  <td colspan="10" class="pl-12 pr-3 py-2">
+                    <p v-if="entriesLoading[catKey(emp, l.category)]" class="text-xs text-slate-400">Loading…</p>
+                    <template v-else>
+                      <table class="w-full text-xs mb-2">
+                        <tbody>
+                          <tr v-for="s in entriesData[catKey(emp, l.category)]" :key="s.id" class="text-slate-500">
+                            <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
+                            <td class="py-1 text-right w-24">
+                              <template v-if="confirmDeleteId === s.id">
+                                <button @click="doDelete(emp, catKey(emp, l.category), s.id)"
+                                  class="text-red-600 mr-1">✓</button>
+                                <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                              </template>
+                              <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
+                            </td>
+                          </tr>
+                          <tr v-if="!entriesData[catKey(emp, l.category)] || entriesData[catKey(emp, l.category)].length === 0">
+                            <td colspan="2" class="py-1 text-slate-400">No entries.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <button @click="openAddEntry(emp, catKey(emp, l.category), l.category, null)"
+                        class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">+ Add entry</button>
+                    </template>
+                  </td>
+                </tr>
               </template>
             </template>
           </tbody>
