@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT employee_id, label, amount FROM employee_rates",
+  "query": "SELECT employee_id, label, amount FROM employee_rates ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "36f05d38fd6618774bc4714da195b83f478f1a92a47ba8cf5e6cd371013dc999"
+  "hash": "9541c27ea4ae2428e756db4aa3ceeb846cb714999228c0bb17fe383c00f58ce8"
 }

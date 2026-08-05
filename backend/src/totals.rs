@@ -321,71 +321,79 @@ pub struct PeriodQuery {
 
 #[derive(Serialize)]
 pub struct CategoryRow {
-    category: String,
+    pub category: String,
     #[serde(with = "rust_decimal::serde::float")]
-    regular_hours: Decimal,
+    pub regular_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    overtime_hours: Decimal,
+    pub overtime_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    sick_hours: Decimal,
+    pub sick_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    logged_hours: Decimal,   // worked hours logged in this category (for mismatch)
-    admin_edited: bool,      // true = stored override; false = computed
+    pub logged_hours: Decimal,
+    pub admin_edited: bool,
 }
 
 #[derive(Serialize)]
 pub struct PrivateRow {
-    session_duration: i32,
-    session_count: i32,
-    logged_count: i32,
-    admin_edited: bool,
+    pub session_duration: i32,
+    pub session_count: i32,
+    pub logged_count: i32,
+    pub admin_edited: bool,
 }
 
 #[derive(Serialize, Clone)]
 pub struct RateEntry {
-    label: String,
+    pub label: String,
     #[serde(with = "rust_decimal::serde::float")]
-    amount: Decimal,
+    pub amount: Decimal,
 }
 
 #[derive(Serialize)]
 pub struct EmployeeTotals {
-    employee_id: i64,
-    employee_name: String,
-    employee_number: String,
-    pay_method: String,
-    pay_frequency: String,
-    categories: Vec<CategoryRow>,
-    private_sessions: Vec<PrivateRow>,
+    pub employee_id: i64,
+    pub employee_name: String,
+    pub employee_number: String,
+    pub pay_method: String,
+    pub pay_frequency: String,
+    pub categories: Vec<CategoryRow>,
+    pub private_sessions: Vec<PrivateRow>,
     #[serde(with = "rust_decimal::serde::float")]
-    other_earn: Decimal,
+    pub other_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    competition_earn: Decimal,
+    pub competition_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    coaching_earn: Decimal,
+    pub coaching_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    lump_sum_earn: Decimal,
-    lump_sums: Vec<LumpSumRow>,
+    pub lump_sum_earn: Decimal,
+    pub lump_sums: Vec<LumpSumRow>,
     #[serde(with = "rust_decimal::serde::float")]
-    private_regular_hours: Decimal,
+    pub private_regular_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
-    private_overtime_hours: Decimal,
-    rates: Vec<RateEntry>,
+    pub private_overtime_hours: Decimal,
+    pub rates: Vec<RateEntry>,
 }
 
-// GET /admin/totals?period_start=…&period_end=… — every employee's stored hours
-// and private counts, with logged sums for the mismatch, plus dollars. Admin-gated.
+// GET /admin/totals?period_start=…&period_end=… — thin HTTP wrapper.
 pub async fn list_totals(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
     Query(period): Query<PeriodQuery>,
 ) -> Result<Json<Vec<EmployeeTotals>>, (StatusCode, String)> {
+    let result = compute_totals(&pool, period.period_start, period.period_end).await?;
+    Ok(Json(result))
+}
+
+// The actual computation, reusable by the Excel export. Takes plain args.
+pub async fn compute_totals(
+    pool: &PgPool,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+) -> Result<Vec<EmployeeTotals>, (StatusCode, String)> {
     // All employees.
     let employees = sqlx::query!(
         r#"SELECT id, name, employee_number, pay_method, pay_frequency FROM employees ORDER BY name"#
-    ).fetch_all(&pool).await
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     // Stored (admin_edited) normal category rows.
     let stored_cats = sqlx::query!(
         r#"
@@ -394,10 +402,9 @@ pub async fn list_totals(
         WHERE period_start = $1 AND period_end = $2
           AND session_duration IS NULL AND admin_edited = true
         "#,
-        period.period_start, period.period_end,
-    ).fetch_all(&pool).await
+        period_start, period_end,
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     // Stored (admin_edited) private rows.
     let stored_privates = sqlx::query!(
         r#"
@@ -406,10 +413,9 @@ pub async fn list_totals(
         WHERE period_start = $1 AND period_end = $2
           AND session_duration IS NOT NULL AND admin_edited = true
         "#,
-        period.period_start, period.period_end,
-    ).fetch_all(&pool).await
+        period_start, period_end,
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     // Dollar buckets.
     let dollars = sqlx::query!(
         r#"
@@ -417,22 +423,17 @@ pub async fn list_totals(
         FROM period_dollar_totals
         WHERE period_start = $1 AND period_end = $2
         "#,
-        period.period_start, period.period_end,
-    ).fetch_all(&pool).await
+        period_start, period_end,
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // All employee rates (for the super-totals rate display).
+    // All employee rates (ordered by id so the export's Hourly/Rate 2/… is stable).
     let rates = sqlx::query!(
-        r#"SELECT employee_id, label, amount FROM employee_rates"#
-    ).fetch_all(&pool).await
+        r#"SELECT employee_id, label, amount FROM employee_rates ORDER BY id"#
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // For the overtime computation we need each employee's WORKED entries for
-    // any Sun–Sat week overlapping the period. Widen the window by 6 days each
-    // side so straddling weeks are fully covered. Sick entries (type='sick')
-    // are excluded — they don't count toward the 40-hour threshold.
-    let window_start = period.period_start - chrono::Duration::days(6);
-    let window_end = period.period_end + chrono::Duration::days(6);
+    // Widen ±6 days for straddling Sun–Sat weeks. Sick excluded from the walk.
+    let window_start = period_start - chrono::Duration::days(6);
+    let window_end = period_end + chrono::Duration::days(6);
     let worked = sqlx::query!(
         r#"
         SELECT employee_id, entry_date,
@@ -443,9 +444,8 @@ pub async fn list_totals(
         WHERE entry_date BETWEEN $1 AND $2 AND type != 'sick'
         "#,
         window_start, window_end,
-    ).fetch_all(&pool).await
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     // Logged private counts per duration, within the period (for mismatch).
     let logged_privates = sqlx::query!(
         r#"
@@ -454,18 +454,15 @@ pub async fn list_totals(
         WHERE entry_date BETWEEN $1 AND $2 AND session_duration IS NOT NULL
         GROUP BY employee_id, session_duration
         "#,
-        period.period_start, period.period_end,
-    ).fetch_all(&pool).await
+        period_start, period_end,
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Which category names are lump-sum (their entries pay a flat per-employee amount).
+    // Which category names are lump-sum.
     let lump_sum_cats: Vec<String> = sqlx::query_scalar!(
         r#"SELECT name FROM categories WHERE is_lump_sum = true"#
-    ).fetch_all(&pool).await
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Lump-sum entry counts per (employee, category) within the period. Each entry
-    // pays the employee's assigned amount for that category (stacks).
+    // Lump-sum entry counts per (employee, category) within the period.
     let lump_entries = sqlx::query!(
         r#"
         SELECT employee_id, category AS "category!", COUNT(*) AS "count!"
@@ -473,10 +470,9 @@ pub async fn list_totals(
         WHERE entry_date BETWEEN $1 AND $2 AND category = ANY($3)
         GROUP BY employee_id, category
         "#,
-        period.period_start, period.period_end, &lump_sum_cats,
-    ).fetch_all(&pool).await
+        period_start, period_end, &lump_sum_cats,
+    ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     // --- Index stored/dollar data ---
     let mut stored_map: HashMap<i64, HashMap<String, (Decimal, Decimal, Decimal)>> = HashMap::new();
     for s in &stored_cats {
@@ -500,8 +496,6 @@ pub async fn list_totals(
         rate_map.entry(r.employee_id).or_default()
             .push(RateEntry { label: r.label.clone(), amount: r.amount });
     }
-
-    // Per-employee lump-sum dollars, both itemized (per category) and totaled.
     let mut lump_dollars: HashMap<i64, Decimal> = HashMap::new();
     let mut lump_rows: HashMap<i64, Vec<LumpSumRow>> = HashMap::new();
     for le in &lump_entries {
@@ -517,8 +511,6 @@ pub async fn list_totals(
             entry_count: le.count,
         });
     }
-
-    // Group worked entries by employee for the overtime walk.
     let mut worked_by_emp: HashMap<i64, Vec<OvertimeEntry>> = HashMap::new();
     for w in &worked {
         worked_by_emp.entry(w.employee_id).or_default().push(OvertimeEntry {
@@ -528,19 +520,15 @@ pub async fn list_totals(
             is_private: w.is_private,
         });
     }
-
     // --- Assemble per employee ---
     let mut result = Vec::new();
     for emp in &employees {
-        // Compute the reg/OT split for this employee's worked entries, then
-        // keep only splits whose date falls IN the period, grouped by category.
-        let mut computed: HashMap<String, (Decimal, Decimal)> = HashMap::new(); // cat -> (reg, ot)
-        // Also track logged worked hours per category in-period (for mismatch).
+        let mut computed: HashMap<String, (Decimal, Decimal)> = HashMap::new();
         let mut logged_cat: HashMap<String, Decimal> = HashMap::new();
         if let Some(entries) = worked_by_emp.get(&emp.id) {
             let splits = compute_overtime(entries);
             for (entry, split) in entries.iter().zip(splits.iter()) {
-                if entry.entry_date >= period.period_start && entry.entry_date <= period.period_end {
+                if entry.entry_date >= period_start && entry.entry_date <= period_end {
                     let c = computed.entry(entry.category.clone()).or_insert((Decimal::ZERO, Decimal::ZERO));
                     c.0 += split.regular;
                     c.1 += split.overtime;
@@ -548,28 +536,21 @@ pub async fn list_totals(
                 }
             }
         }
-
-        // Union of computed categories and admin-edited categories.
         let mut cat_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for k in computed.keys() { cat_names.insert(k.clone()); }
         if let Some(m) = stored_map.get(&emp.id) { for k in m.keys() { cat_names.insert(k.clone()); } }
-
         let mut categories = Vec::new();
         for cat in &cat_names {
-            // Skip the private pseudo-category here — privates handled separately.
             if cat == "private" { continue; }
-            // Skip lump-sum categories — they get their own dollar rows.
             if lump_sum_cats.contains(cat) { continue; }
             let logged = logged_cat.get(cat).copied().unwrap_or(Decimal::ZERO);
             if let Some((reg, ot, sick)) = stored_map.get(&emp.id).and_then(|m| m.get(cat)).copied() {
-                // Admin override.
                 categories.push(CategoryRow {
                     category: cat.clone(),
                     regular_hours: reg, overtime_hours: ot, sick_hours: sick,
                     logged_hours: logged, admin_edited: true,
                 });
             } else {
-                // Computed from entries.
                 let (reg, ot) = computed.get(cat).copied().unwrap_or((Decimal::ZERO, Decimal::ZERO));
                 categories.push(CategoryRow {
                     category: cat.clone(),
@@ -578,12 +559,9 @@ pub async fn list_totals(
                 });
             }
         }
-
-        // Private durations: union of computed-from-logged and admin-edited.
         let mut durations: std::collections::BTreeSet<i32> = std::collections::BTreeSet::new();
         if let Some(m) = logged_priv_map.get(&emp.id) { for k in m.keys() { durations.insert(*k); } }
         if let Some(m) = stored_priv_map.get(&emp.id) { for k in m.keys() { durations.insert(*k); } }
-
         let mut private_sessions = Vec::new();
         for dur in &durations {
             let logged = logged_priv_map.get(&emp.id).and_then(|m| m.get(dur)).copied().unwrap_or(0);
@@ -597,17 +575,11 @@ pub async fn list_totals(
                 });
             }
         }
-
         let (other, competition, coaching) = dollar_map.get(&emp.id).copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
         let lump = lump_dollars.get(&emp.id).copied().unwrap_or(Decimal::ZERO);
-
-        // Private's reg/OT hours come from the same overtime walk (private entries
-        // participate in it). We skipped private as a category row, but its hours
-        // still roll into the header totals.
         let (priv_reg, priv_ot) = computed.get("private").copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO));
-
         result.push(EmployeeTotals {
             employee_id: emp.id,
             employee_name: emp.name.clone(),
@@ -624,8 +596,7 @@ pub async fn list_totals(
             rates: rate_map.get(&emp.id).cloned().unwrap_or_default(),
         });
     }
-
-    Ok(Json(result))
+    Ok(result)
 }
 
 #[derive(Deserialize)]

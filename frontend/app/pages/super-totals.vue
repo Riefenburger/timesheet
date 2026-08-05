@@ -397,6 +397,36 @@ function pickPeriod(half) {
 }
 function changePeriod(fn) { fn(); loadTotals(); }
 
+async function exportExcel() {
+  const runNumber = window.prompt("Run Number for this payroll?");
+  if (runNumber === null) return; // cancelled
+  try {
+    const params = new URLSearchParams({
+      period_start: start.value,
+      period_end: end.value,
+      run_number: runNumber,
+      frequency: freqView.value,
+      pay_method: payFilter.value,
+    });
+    const res = await fetch(`/api/admin/totals/export?${params.toString()}`);
+    if (!res.ok) {
+      error.value = "Could not generate the export.";
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `payroll_timesheet_${end.value}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    error.value = "Could not generate the export.";
+  }
+}
+
 onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
 </script>
 
@@ -467,6 +497,10 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
           <option value="payroll">Payroll only</option>
           <option value="check">Check only</option>
         </select>
+        <button @click="exportExcel"
+          class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500">
+          Export to Excel
+        </button>
       </div>
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>

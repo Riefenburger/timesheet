@@ -7,6 +7,7 @@ mod categories;
 mod auth_core;
 mod auth_routes;
 mod private_durations;
+mod export;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
@@ -55,6 +56,7 @@ async fn main() {
         .route("/private-durations", get(private_durations::list_durations))
         .route("/admin/private-durations", post(private_durations::create_duration))
         .route("/admin/private-durations/{id}", put(private_durations::update_duration).delete(private_durations::delete_duration))
+        .route("/admin/totals/export", get(export::export_totals))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
