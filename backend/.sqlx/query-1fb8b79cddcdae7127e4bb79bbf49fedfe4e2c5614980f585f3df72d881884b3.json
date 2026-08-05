@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, is_private, created_at FROM categories ORDER BY name",
+  "query": "\n        UPDATE categories\n        SET name = $1, is_private = $2\n        WHERE id = $3\n        RETURNING id, name, is_private, is_lump_sum, created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "is_lump_sum",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "is_lump_sum"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -49,14 +60,19 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Bool",
+        "Int8"
+      ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "e6ff065f049b913b9742de262341b5d2fccd6447dfcbe92eeae0cc148a8c46a1"
+  "hash": "1fb8b79cddcdae7127e4bb79bbf49fedfe4e2c5614980f585f3df72d881884b3"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO categories (name, is_private)\n        VALUES ($1, $2)\n        RETURNING id, name, is_private, created_at\n        ",
+  "query": "\n        INSERT INTO categories (name, is_private, is_lump_sum)\n        VALUES ($1, $2, $3)\n        RETURNING id, name, is_private, is_lump_sum, created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "is_lump_sum",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "is_lump_sum"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -51,6 +62,7 @@
     "parameters": {
       "Left": [
         "Text",
+        "Bool",
         "Bool"
       ]
     },
@@ -58,8 +70,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "807185030ecdec81cd33a5672ef5b3fa109174ac772480105aad7a5e76b79e0c"
+  "hash": "f9b9104f75bee58abf4e0b7c805b63fc761d10d81c7276c99ba7c6fe14aa6d5a"
 }

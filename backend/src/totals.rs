@@ -355,6 +355,8 @@ pub struct EmployeeTotals {
     #[serde(with = "rust_decimal::serde::float")]
     coaching_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
+    lump_sum_earn: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
     private_regular_hours: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     private_overtime_hours: Decimal,
@@ -446,6 +448,25 @@ pub async fn list_totals(
     ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Which category names are lump-sum (their entries pay a flat per-employee amount).
+    let lump_sum_cats: Vec<String> = sqlx::query_scalar!(
+        r#"SELECT name FROM categories WHERE is_lump_sum = true"#
+    ).fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Lump-sum entry counts per (employee, category) within the period. Each entry
+    // pays the employee's assigned amount for that category (stacks).
+    let lump_entries = sqlx::query!(
+        r#"
+        SELECT employee_id, category AS "category!", COUNT(*) AS "count!"
+        FROM time_entries
+        WHERE entry_date BETWEEN $1 AND $2 AND category = ANY($3)
+        GROUP BY employee_id, category
+        "#,
+        period.period_start, period.period_end, &lump_sum_cats,
+    ).fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     // --- Index stored/dollar data ---
     let mut stored_map: HashMap<i64, HashMap<String, (Decimal, Decimal, Decimal)>> = HashMap::new();
     for s in &stored_cats {
@@ -468,6 +489,18 @@ pub async fn list_totals(
     for r in &rates {
         rate_map.entry(r.employee_id).or_default()
             .push(RateEntry { label: r.label.clone(), amount: r.amount });
+    }
+
+    // Per-employee lump-sum dollars: for each lump-sum entry count, multiply by
+    // that employee's assigned amount (their rate for that category).
+    let mut lump_dollars: HashMap<i64, Decimal> = HashMap::new();
+    for le in &lump_entries {
+        let amount = rate_map.get(&le.employee_id)
+            .and_then(|rates| rates.iter().find(|r| r.label == le.category))
+            .map(|r| r.amount)
+            .unwrap_or(Decimal::ZERO);
+        *lump_dollars.entry(le.employee_id).or_insert(Decimal::ZERO)
+            += amount * Decimal::from(le.count);
     }
 
     // Group worked entries by employee for the overtime walk.
@@ -550,6 +583,7 @@ pub async fn list_totals(
 
         let (other, competition, coaching) = dollar_map.get(&emp.id).copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO, Decimal::ZERO));
+        let lump = lump_dollars.get(&emp.id).copied().unwrap_or(Decimal::ZERO);
 
         // Private's reg/OT hours come from the same overtime walk (private entries
         // participate in it). We skipped private as a category row, but its hours
@@ -565,6 +599,7 @@ pub async fn list_totals(
             categories,
             private_sessions,
             other_earn: other, competition_earn: competition, coaching_earn: coaching,
+            lump_sum_earn: lump,
             private_regular_hours: priv_reg,
             private_overtime_hours: priv_ot,
             rates: rate_map.get(&emp.id).cloned().unwrap_or_default(),

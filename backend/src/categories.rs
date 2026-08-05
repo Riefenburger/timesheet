@@ -14,6 +14,7 @@ pub struct Category {
     id: i64,
     name: String,
     is_private: bool,
+    is_lump_sum: bool,
     created_at: DateTime<Utc>,
 }
 
@@ -22,6 +23,8 @@ pub struct NewCategory {
     name: String,
     #[serde(default)]
     is_private: bool,
+    #[serde(default)]
+    is_lump_sum: bool,
 }
 
 #[derive(Deserialize)]
@@ -36,7 +39,7 @@ pub async fn list_categories(
 ) -> Result<Json<Vec<Category>>, (StatusCode, String)> {
     let categories = sqlx::query_as!(
         Category,
-        r#"SELECT id, name, is_private, created_at FROM categories ORDER BY name"#
+        r#"SELECT id, name, is_private, is_lump_sum, created_at FROM categories ORDER BY name"#
     )
     .fetch_all(&pool)
     .await
@@ -70,12 +73,13 @@ pub async fn create_category(
     let category = sqlx::query_as!(
         Category,
         r#"
-        INSERT INTO categories (name, is_private)
-        VALUES ($1, $2)
-        RETURNING id, name, is_private, created_at
+        INSERT INTO categories (name, is_private, is_lump_sum)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, is_private, is_lump_sum, created_at
         "#,
         name,
         payload.is_private,
+        payload.is_lump_sum,
     )
     .fetch_one(&pool)
     .await
@@ -113,7 +117,7 @@ pub async fn update_category(
         UPDATE categories
         SET name = $1, is_private = $2
         WHERE id = $3
-        RETURNING id, name, is_private, created_at
+        RETURNING id, name, is_private, is_lump_sum, created_at
         "#,
         name,
         payload.is_private,
