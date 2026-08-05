@@ -4,7 +4,6 @@ const { current, prev, next, goTo, label, start, end } = usePayPeriod();
 const employees = ref([]);
 const loading = ref(false);
 const error = ref(null);
-const payFilter = ref("both");
 
 const showCalendar = ref(false);
 const calYear = ref(current.value.year);
@@ -46,10 +45,7 @@ async function loadTotals() {
   }
 }
 
-const visibleEmployees = computed(() => {
-  if (payFilter.value === "both") return employees.value;
-  return employees.value.filter((e) => e.pay_method === payFilter.value);
-});
+const visibleEmployees = computed(() => employees.value);
 
 function sumField(emp, field) {
   return emp.categories.reduce((a, c) => a + Number(c[field]), 0);
@@ -416,12 +412,6 @@ onMounted(() => { loadTotals(); loadCategoryList(); });
         </div>
         <button @click="changePeriod(next)"
           class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">→</button>
-        <div class="flex-1"></div>
-        <select v-model="payFilter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-          <option value="both">All employees</option>
-          <option value="payroll">Payroll only</option>
-          <option value="check">Check only</option>
-        </select>
       </div>
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
@@ -448,7 +438,6 @@ onMounted(() => { loadTotals(); loadCategoryList(); });
                 <td class="px-3 py-3 text-slate-800 font-medium whitespace-nowrap">
                   {{ emp.employee_name }}
                   <span class="text-slate-400 font-normal">#{{ emp.employee_number }}</span>
-                  <span class="ml-1 text-xs text-slate-400 capitalize">({{ emp.pay_method }})</span>
                 </td>
                 <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "regular_hours").toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "overtime_hours").toFixed(2) }}</td>

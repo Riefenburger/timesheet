@@ -10,27 +10,13 @@ const showCalendar = ref(false);
 const calYear = ref(current.value.year);
 const calMonth = ref(current.value.month);
 
-// employee_id -> { categoryName: amount, "private_NN": amount }
-const rateMap = reactive({});
-
-async function loadRatesFor(empId) {
-  try {
-    const rates = await $fetch(`/api/admin/employees/${empId}/rates`);
-    const m = {};
-    for (const r of rates) m[r.label] = Number(r.amount);
-    rateMap[empId] = m;
-  } catch (e) {
-    rateMap[empId] = {};
-  }
-}
-
 function catRate(emp, category) {
-  const m = rateMap[emp.employee_id];
-  return m && m[category] !== undefined ? m[category] : null;
+  const r = (emp.rates || []).find((r) => r.label === category);
+  return r ? r.amount : null;
 }
 function privRate(emp, duration) {
-  const m = rateMap[emp.employee_id];
-  return m && m[`private_${duration}`] !== undefined ? m[`private_${duration}`] : null;
+  const r = (emp.rates || []).find((r) => r.label === `private_${duration}`);
+  return r ? r.amount : null;
 }
 
 async function loadTotals() {
@@ -62,8 +48,6 @@ async function loadTotals() {
         _saving: false,
       })),
     }));
-    // Fetch each employee's rates (separately, for now).
-    for (const emp of employees.value) loadRatesFor(emp.employee_id);
   } catch (e) {
     error.value = "Could not load totals — are you a super admin?";
   } finally {

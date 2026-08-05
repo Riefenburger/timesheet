@@ -333,6 +333,13 @@ pub struct PrivateRow {
     admin_edited: bool,
 }
 
+#[derive(Serialize, Clone)]
+pub struct RateEntry {
+    label: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    amount: Decimal,
+}
+
 #[derive(Serialize)]
 pub struct EmployeeTotals {
     employee_id: i64,
@@ -347,6 +354,7 @@ pub struct EmployeeTotals {
     competition_earn: Decimal,
     #[serde(with = "rust_decimal::serde::float")]
     coaching_earn: Decimal,
+    rates: Vec<RateEntry>,
 }
 
 // GET /admin/totals?period_start=…&period_end=… — every employee's stored hours
@@ -394,6 +402,12 @@ pub async fn list_totals(
         WHERE period_start = $1 AND period_end = $2
         "#,
         period.period_start, period.period_end,
+    ).fetch_all(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // All employee rates (for the super-totals rate display).
+    let rates = sqlx::query!(
+        r#"SELECT employee_id, label, amount FROM employee_rates"#
     ).fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -445,6 +459,11 @@ pub async fn list_totals(
     let mut dollar_map: HashMap<i64, (Decimal, Decimal, Decimal)> = HashMap::new();
     for d in &dollars {
         dollar_map.insert(d.employee_id, (d.other_earn, d.competition_earn, d.coaching_earn));
+    }
+    let mut rate_map: HashMap<i64, Vec<RateEntry>> = HashMap::new();
+    for r in &rates {
+        rate_map.entry(r.employee_id).or_default()
+            .push(RateEntry { label: r.label.clone(), amount: r.amount });
     }
 
     // Group worked entries by employee for the overtime walk.
@@ -536,6 +555,7 @@ pub async fn list_totals(
             categories,
             private_sessions,
             other_earn: other, competition_earn: competition, coaching_earn: coaching,
+            rates: rate_map.get(&emp.id).cloned().unwrap_or_default(),
         });
     }
 

@@ -132,16 +132,33 @@ pub async fn delete_category(
     _super: SuperAdminEmployee,
     Path(category_id): Path<i64>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    // Guard: the private category is infrastructure — never deletable.
+    let cat = sqlx::query!(
+        "SELECT is_private FROM categories WHERE id = $1", category_id
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "Category not found".to_string()))?;
+
+    if cat.is_private {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "The private category can't be deleted.".to_string(),
+        ));
+    }
+
+    // Delete. Historical entries keep their text category label; since category
+    // is text (not a foreign key), removing it from the list orphans nothing —
+    // old entries still display, you just can't log new ones under it.
     let result = sqlx::query!(
         "DELETE FROM categories WHERE id = $1", category_id
     )
     .execute(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     if result.rows_affected() == 0 {
         return Err((StatusCode::NOT_FOUND, "Category not found".to_string()));
     }
-
     Ok(StatusCode::NO_CONTENT)
 }
