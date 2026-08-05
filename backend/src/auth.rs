@@ -2,9 +2,11 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
 };
+use axum_extra::extract::CookieJar;
 use sqlx::PgPool;
 
-// Who is making this request. STUB: trusts X-Employee-Id for now.
+// Who is making this request. Prefers a valid session cookie; falls back to the
+// X-Employee-Id header (STUB) during the auth transition.
 pub struct CurrentEmployee {
     pub id: i64,
 }
@@ -12,21 +14,42 @@ pub struct CurrentEmployee {
 impl<S> FromRequestParts<S> for CurrentEmployee
 where
     S: Send + Sync,
+    PgPool: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // 1. Try the session cookie.
+        let jar = CookieJar::from_headers(&parts.headers);
+        if let Some(cookie) = jar.get("session") {
+            let token = cookie.value();
+            let pool = PgPool::from_ref(state);
+            let row = sqlx::query!(
+                "SELECT employee_id FROM sessions WHERE token = $1 AND expires_at > now()",
+                token
+            )
+            .fetch_optional(&pool)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Session lookup failed"))?;
+
+            if let Some(r) = row {
+                return Ok(CurrentEmployee { id: r.employee_id });
+            }
+            // Cookie present but invalid/expired — fall through to header for now.
+        }
+
+        // 2. Fall back to the stub header (removed once login is fully wired).
         let id = parts
             .headers
             .get("x-employee-id")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<i64>().ok())
-            .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid X-Employee-Id header"))?;
+            .ok_or((StatusCode::UNAUTHORIZED, "Not logged in"))?;
         Ok(CurrentEmployee { id })
     }
 }
 
-// Helper: fetch an employee's role from the database. Shared by both gates.
+// Helper: fetch an employee's role. Shared by both gates.
 async fn fetch_role<S>(parts: &mut Parts, state: &S) -> Result<(i64, String), (StatusCode, String)>
 where
     S: Send + Sync,
@@ -49,7 +72,6 @@ where
     Ok((current.id, role))
 }
 
-// Proven to be an admin OR super_admin. Gates the hours/admin views.
 #[allow(dead_code)]
 pub struct AdminEmployee {
     pub id: i64,
@@ -71,7 +93,6 @@ where
     }
 }
 
-// Proven to be a super_admin. Gates the pay/rate views.
 #[allow(dead_code)]
 pub struct SuperAdminEmployee {
     pub id: i64,

@@ -5,6 +5,7 @@ mod totals;
 mod rates;
 mod categories;
 mod auth_core;
+mod auth_routes;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
@@ -43,6 +44,12 @@ async fn main() {
         .route("/admin/private-counts", post(totals::upsert_private_count))
         .route("/admin/dollar-totals", post(totals::upsert_dollar_totals))
         .route("/admin/category-hours/revert", post(totals::revert_category_hours))
+        .route("/auth/login", post(auth_routes::login))
+        .route("/auth/logout", post(auth_routes::logout))
+        .route("/auth/me", get(auth_routes::me))
+        .route("/admin/invites", post(auth_routes::create_invite))
+        .route("/auth/invite/{token}", get(auth_routes::check_invite))
+        .route("/auth/signup", post(auth_routes::signup))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
