@@ -253,3 +253,43 @@ pub async fn me(
 
     Ok(Json(MeResponse { id: row.id, name: row.name, email: row.email, role: row.role }))
 }
+
+// POST /admin/employees/{id}/reset-account — super-admin clears an employee's
+// password and kills their sessions, reverting them to "no account" so they can
+// sign up fresh via a new invite.
+pub async fn reset_account(
+    State(pool): State<PgPool>,
+    _super: SuperAdminEmployee,
+    axum::extract::Path(employee_id): axum::extract::Path<i64>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Confirm the employee exists.
+    let exists = sqlx::query_scalar!(
+        "SELECT id FROM employees WHERE id = $1", employee_id
+    )
+    .fetch_optional(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "Employee not found.".to_string()));
+    }
+
+    // Clear password + delete sessions atomically.
+    let mut tx = pool.begin().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query!(
+        "UPDATE employees SET password_hash = NULL WHERE id = $1", employee_id
+    )
+    .execute(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query!(
+        "DELETE FROM sessions WHERE employee_id = $1", employee_id
+    )
+    .execute(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tx.commit().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}

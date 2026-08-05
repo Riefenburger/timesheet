@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE employees\n        SET name = $1, employee_number = $2, email = $3,\n            role = $4, pay_method = $5, is_salaried = $6, salary = $7\n        WHERE id = $8\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary, created_at\n        ",
+  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -104,6 +104,12 @@
       },
       {
         "ordinal": 9,
+        "name": "has_account!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -122,8 +128,7 @@
         "Text",
         "Text",
         "Bool",
-        "Numeric",
-        "Int8"
+        "Numeric"
       ]
     },
     "nullable": [
@@ -136,8 +141,9 @@
       false,
       false,
       true,
+      null,
       false
     ]
   },
-  "hash": "73b7edce603a208b5d87715e6db23591cc32d5d1c70d0c3bf08434d06f3a856b"
+  "hash": "356d39e537181affac82862ce338760dd2d0132a6b079e97f23eeb40c1623775"
 }

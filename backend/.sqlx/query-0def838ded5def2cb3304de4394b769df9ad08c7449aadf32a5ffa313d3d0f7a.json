@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary, created_at\n        FROM employees\n        ORDER BY name\n        ",
+  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        FROM employees\n        ORDER BY name\n        ",
   "describe": {
     "columns": [
       {
@@ -104,6 +104,12 @@
       },
       {
         "ordinal": 9,
+        "name": "has_account!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -127,8 +133,9 @@
       false,
       false,
       true,
+      null,
       false
     ]
   },
-  "hash": "724b9a81e66fd3cf98e614feedc74ba74aec8d71883f254e5f5c8a30e62a99fb"
+  "hash": "0def838ded5def2cb3304de4394b769df9ad08c7449aadf32a5ffa313d3d0f7a"
 }

@@ -29,6 +29,7 @@ pub struct Employee {
     is_salaried: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     salary: Option<Decimal>,
+    has_account: bool,
     created_at: DateTime<Utc>,
 }
 
@@ -72,7 +73,9 @@ pub async fn create_employee(
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary, created_at
+            role, pay_method, is_salaried, salary,
+            (password_hash IS NOT NULL) AS "has_account!",
+            created_at
         "#,
         payload.name,
         payload.employee_number,
@@ -96,7 +99,9 @@ pub async fn list_employees(
         r#"
         SELECT
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary, created_at
+            role, pay_method, is_salaried, salary,
+            (password_hash IS NOT NULL) AS "has_account!",
+            created_at
         FROM employees
         ORDER BY name
         "#
@@ -168,7 +173,9 @@ pub async fn update_employee(
         WHERE id = $8
         RETURNING
             id, name, employee_number, email, google_sub,
-            role, pay_method, is_salaried, salary, created_at
+            role, pay_method, is_salaried, salary,
+            (password_hash IS NOT NULL) AS "has_account!",
+            created_at
         "#,
         payload.name,
         payload.employee_number,

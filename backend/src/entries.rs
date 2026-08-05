@@ -255,9 +255,16 @@ pub async fn create_entry(
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
+#[derive(Deserialize)]
+pub struct MyEntriesQuery {
+    period_start: Option<NaiveDate>,
+    period_end: Option<NaiveDate>,
+}
+
 pub async fn list_entries(
     State(pool): State<PgPool>,
     current: CurrentEmployee,
+    Query(q): Query<MyEntriesQuery>,
 ) -> Result<Json<Vec<TimeEntry>>, (StatusCode, String)> {
     let entries = sqlx::query_as!(
         TimeEntry,
@@ -269,14 +276,16 @@ pub async fn list_entries(
             created_at
         FROM time_entries
         WHERE employee_id = $1
+          AND ($2::date IS NULL OR entry_date >= $2)
+          AND ($3::date IS NULL OR entry_date <= $3)
         ORDER BY entry_date DESC, created_at DESC
         "#,
-        current.id
+        current.id,
+        q.period_start,
+        q.period_end,
     )
-    .fetch_all(&pool)
-    .await
+    .fetch_all(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
     Ok(Json(entries))
 }
 

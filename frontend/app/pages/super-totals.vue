@@ -1,5 +1,4 @@
 <script setup>
-const SUPER_ADMIN_ID = 2; // STUB: Mark (super_admin) on dev
 const { current, prev, next, goTo, label, start, end } = usePayPeriod();
 
 const employees = ref([]);
@@ -11,14 +10,12 @@ const showCalendar = ref(false);
 const calYear = ref(current.value.year);
 const calMonth = ref(current.value.month);
 
-const headers = { "X-Employee-Id": String(SUPER_ADMIN_ID) };
-
 // employee_id -> { categoryName: amount, "private_NN": amount }
 const rateMap = reactive({});
 
 async function loadRatesFor(empId) {
   try {
-    const rates = await $fetch(`/api/admin/employees/${empId}/rates`, { headers });
+    const rates = await $fetch(`/api/admin/employees/${empId}/rates`);
     const m = {};
     for (const r of rates) m[r.label] = Number(r.amount);
     rateMap[empId] = m;
@@ -41,7 +38,6 @@ async function loadTotals() {
   error.value = null;
   try {
     const data = await $fetch("/api/admin/totals", {
-      headers,
       query: { period_start: start.value, period_end: end.value },
     });
     employees.value = data.map((emp) => ({
@@ -109,7 +105,7 @@ async function saveCategory(emp, c) {
   error.value = null;
   try {
     await $fetch("/api/admin/category-hours", {
-      method: "POST", headers,
+      method: "POST",
       body: {
         employee_id: emp.employee_id,
         period_start: start.value, period_end: end.value,
@@ -132,7 +128,7 @@ async function revertCategory(emp, c) {
   error.value = null;
   try {
     await $fetch("/api/admin/category-hours/revert", {
-      method: "POST", headers,
+      method: "POST",
       body: {
         employee_id: emp.employee_id,
         period_start: start.value, period_end: end.value,
@@ -150,7 +146,7 @@ async function saveDollars(emp) {
   error.value = null;
   try {
     await $fetch("/api/admin/dollar-totals", {
-      method: "POST", headers,
+      method: "POST",
       body: {
         employee_id: emp.employee_id,
         period_start: start.value, period_end: end.value,
@@ -171,7 +167,7 @@ async function savePrivate(emp, p) {
   error.value = null;
   try {
     await $fetch("/api/admin/private-counts", {
-      method: "POST", headers,
+      method: "POST",
       body: {
         employee_id: emp.employee_id,
         period_start: start.value, period_end: end.value,
@@ -191,7 +187,7 @@ async function revertPrivate(emp, p) {
   error.value = null;
   try {
     await $fetch("/api/admin/category-hours/revert", {
-      method: "POST", headers,
+      method: "POST",
       body: {
         employee_id: emp.employee_id,
         period_start: start.value, period_end: end.value,
@@ -219,7 +215,6 @@ async function toggleCategoryEntries(emp, category) {
     entriesLoading[key] = true;
     try {
       entriesData[key] = await $fetch(`/api/admin/employees/${emp.employee_id}/entries`, {
-        headers,
         query: { period_start: start.value, period_end: end.value,
           category: category === "uncategorized" ? "__uncategorized__" : category },
       });
@@ -234,7 +229,6 @@ async function togglePrivateEntries(emp, duration) {
     entriesLoading[key] = true;
     try {
       const all = await $fetch(`/api/admin/employees/${emp.employee_id}/entries`, {
-        headers,
         query: { period_start: start.value, period_end: end.value, category: "private" },
       });
       entriesData[key] = all.filter((e) => e.session_duration === duration);
@@ -315,11 +309,11 @@ async function saveEntryModal() {
   try {
     if (entryModalMode.value === "add") {
       await $fetch("/api/admin/entries", {
-        method: "POST", headers,
+        method: "POST",
         body: { employee_id: entryModalEmp.value.employee_id, ...body },
       });
     } else {
-      await $fetch(`/api/admin/entries/${entryForm.id}`, { method: "PUT", headers, body });
+      await $fetch(`/api/admin/entries/${entryForm.id}`, { method: "PUT", body });
     }
     closeEntryModal();
     await refreshAfterEntryChange(entryModalEmp.value, entryModalKey.value);
@@ -333,7 +327,7 @@ async function saveEntryModal() {
 const confirmDeleteId = ref(null);
 async function doDelete(emp, key, id) {
   try {
-    await $fetch(`/api/admin/entries/${id}`, { method: "DELETE", headers });
+    await $fetch(`/api/admin/entries/${id}`, { method: "DELETE"});
     confirmDeleteId.value = null;
     await refreshAfterEntryChange(emp, key);
   } catch (e) { error.value = "Could not delete that entry."; }
@@ -394,16 +388,11 @@ onMounted(() => { loadTotals(); loadCategoryList(); });
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 py-10 px-4">
+  <div class="py-10 px-4">
     <div class="max-w-6xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Super Admin — Totals &amp; Rates</h1>
-        <div class="flex items-center gap-4">
-          <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">Admin Totals →</NuxtLink>
-          <NuxtLink to="/admin-users" class="text-sm text-slate-500 hover:text-slate-800">Employees →</NuxtLink>
-        </div>
       </div>
-
       <div class="bg-white rounded-2xl shadow p-4 mb-6 flex items-center gap-4">
         <button @click="changePeriod(prev)"
           class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">←</button>

@@ -50,6 +50,7 @@ async fn main() {
         .route("/admin/invites", post(auth_routes::create_invite))
         .route("/auth/invite/{token}", get(auth_routes::check_invite))
         .route("/auth/signup", post(auth_routes::signup))
+        .route("/admin/employees/{id}/reset-account", post(auth_routes::reset_account))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

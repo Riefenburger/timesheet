@@ -29,9 +29,6 @@ onMounted(loadAllEntries);
     <div class="max-w-4xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Admin — All Entries</h1>
-        <NuxtLink to="/" class="text-sm text-slate-500 hover:text-slate-800">
-          ← Back to time entry
-        </NuxtLink>
       </div>
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>

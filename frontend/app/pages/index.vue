@@ -1,6 +1,6 @@
 <script setup>
-const employees = ref([]);
-const selectedEmployeeId = ref(null);
+const { user } = useAuth();
+
 const entries = ref([]);
 const loading = ref(false);
 const error = ref(null);
@@ -15,28 +15,18 @@ const form = reactive({
   session_count: null,
 });
 
-// Categories the selected employee is rated for.
-const myCategories = ref([]);       // normal category names
-const privateDurations = ref([]);   // durations they have private rates for
-
-// Is the currently-picked category the private one?
+const myCategories = ref([]);
+const privateDurations = ref([]);
 const isPrivate = computed(() => form.category === "private");
 
-async function loadEmployees() {
-  try {
-    employees.value = await $fetch("/api/employees");
-  } catch (e) {
-    error.value = "Could not load employees — is the backend running?";
-  }
-}
+const { start, end } = usePayPeriod();
 
 async function loadEntries() {
-  if (!selectedEmployeeId.value) { entries.value = []; return; }
   loading.value = true;
   error.value = null;
   try {
     entries.value = await $fetch("/api/entries", {
-      headers: { "X-Employee-Id": String(selectedEmployeeId.value) },
+      query: { period_start: start.value, period_end: end.value },
     });
   } catch (e) {
     error.value = "Could not load entries.";
@@ -46,15 +36,8 @@ async function loadEntries() {
 }
 
 async function loadMyCategories() {
-  if (!selectedEmployeeId.value) {
-    myCategories.value = [];
-    privateDurations.value = [];
-    return;
-  }
   try {
-    const data = await $fetch("/api/entries/categories", {
-      headers: { "X-Employee-Id": String(selectedEmployeeId.value) },
-    });
+    const data = await $fetch("/api/entries/categories");
     myCategories.value = data.categories ?? [];
     privateDurations.value = data.private_durations ?? [];
   } catch (e) {
@@ -75,9 +58,6 @@ function resetForm() {
 
 async function addEntry() {
   error.value = null;
-
-  // Build the body — private sends duration + count (hours derived server-side);
-  // normal sends hours.
   const body = {
     entry_date: form.entry_date,
     class_name: form.class_name,
@@ -88,13 +68,8 @@ async function addEntry() {
     session_duration: isPrivate.value ? form.session_duration : null,
     session_count: isPrivate.value ? form.session_count : null,
   };
-
   try {
-    await $fetch("/api/entries", {
-      method: "POST",
-      headers: { "X-Employee-Id": String(selectedEmployeeId.value) },
-      body,
-    });
+    await $fetch("/api/entries", { method: "POST", body });
     resetForm();
     await loadEntries();
   } catch (e) {
@@ -102,53 +77,28 @@ async function addEntry() {
   }
 }
 
-// Clear the private/hours sub-fields whenever the category changes, so stale
-// values from a previous pick don't linger.
 watch(() => form.category, () => {
   form.hours = null;
   form.session_duration = null;
   form.session_count = null;
 });
 
-watch(selectedEmployeeId, () => {
+onMounted(() => {
   loadEntries();
   loadMyCategories();
-  resetForm();
 });
-
-onMounted(loadEmployees);
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 py-10 px-4">
+  <div class="py-10 px-4">
     <div class="max-w-2xl mx-auto">
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">Timesheet</h1>
-        <div class="flex items-center gap-4">
-          <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">Admin Totals →</NuxtLink>
-          <NuxtLink to="/super-totals" class="text-sm text-slate-500 hover:text-slate-800">Pay →</NuxtLink>
-          <NuxtLink to="/admin-users" class="text-sm text-slate-500 hover:text-slate-800">Employees →</NuxtLink>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow p-6 mb-6">
-        <label class="block text-sm font-medium text-slate-600 mb-1">Logged in as</label>
-        <select v-model.number="selectedEmployeeId"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2">
-          <option :value="null" disabled>Select an employee…</option>
-          <option v-for="emp in employees" :key="emp.id" :value="emp.id">
-            {{ emp.name }} (#{{ emp.employee_number }})
-          </option>
-        </select>
-        <p class="text-xs text-slate-400 mt-2">
-          Temporary stand-in for sign-in — switch to see each person's own entries.
-        </p>
-      </div>
+      <h1 class="text-2xl font-bold text-slate-800 mb-6">
+        My Time
+        <span v-if="user" class="text-base font-normal text-slate-400">— {{ user.name }}</span>
+      </h1>
 
       <form @submit.prevent="addEntry" class="bg-white rounded-2xl shadow p-6 mb-8">
-        <fieldset :disabled="!selectedEmployeeId" class="space-y-4 disabled:opacity-50">
-
-          <!-- Row 1: Class Name & Time, Room #, Date -->
+        <fieldset class="space-y-4">
           <div class="flex gap-4">
             <div class="flex-1">
               <label class="block text-sm font-medium text-slate-600 mb-1">Class Name &amp; Time</label>
@@ -167,7 +117,6 @@ onMounted(loadEmployees);
             </div>
           </div>
 
-          <!-- Row 2: Role (category), then Hours OR the private expansion -->
           <div class="flex gap-4 items-start">
             <div class="flex-1">
               <label class="block text-sm font-medium text-slate-600 mb-1">Role</label>
@@ -179,14 +128,11 @@ onMounted(loadEmployees);
               </select>
             </div>
 
-            <!-- Normal: hours -->
             <div v-if="!isPrivate" class="w-28">
               <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
               <input v-model.number="form.hours" type="number" step="0.25" min="0" :required="!isPrivate"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
-
-            <!-- Private: duration + session count -->
             <template v-else>
               <div class="w-32">
                 <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
@@ -203,7 +149,7 @@ onMounted(loadEmployees);
               </div>
             </template>
           </div>
-          
+
           <button type="submit"
             class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
             Add entry
@@ -215,8 +161,7 @@ onMounted(loadEmployees);
 
       <div class="bg-white rounded-2xl shadow p-6">
         <h2 class="text-lg font-semibold text-slate-800 mb-4">Entries</h2>
-        <p v-if="!selectedEmployeeId" class="text-slate-400">Pick an employee to see their entries.</p>
-        <p v-else-if="loading" class="text-slate-400">Loading…</p>
+        <p v-if="loading" class="text-slate-400">Loading…</p>
         <p v-else-if="entries.length === 0" class="text-slate-400">No entries yet.</p>
         <ul v-else class="divide-y divide-slate-100">
           <li v-for="entry in entries" :key="entry.id" class="py-3">
@@ -232,7 +177,7 @@ onMounted(loadEmployees);
               </span>
               <span class="text-slate-500">{{ entry.entry_date }} · {{ entry.hours }}h</span>
             </div>
-            <p v-if="entry.details" class="text-slate-600 text-sm mt-1">
+            <p v-if="entry.teacher_room" class="text-slate-600 text-sm mt-1">
               Room {{ entry.teacher_room }}
             </p>
           </li>

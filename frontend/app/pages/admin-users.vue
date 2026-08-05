@@ -1,5 +1,4 @@
 <script setup>
-const SUPER_ADMIN_ID = 2; // STUB: Mark (super_admin) on dev
 const employees = ref([]);
 const loading = ref(false);
 const error = ref(null);
@@ -7,7 +6,7 @@ const error = ref(null);
 // Global category list (for the rate-assignment dropdown + management).
 const categories = ref([]);
 async function loadCategories() {
-  try { categories.value = await $fetch("/api/categories", { headers }); }
+  try { categories.value = await $fetch("/api/categories"); }
   catch (e) { categories.value = []; }
 }
 
@@ -18,13 +17,13 @@ const modalError = ref(null);
 const form = reactive({
   name: "", employee_number: "", email: "",
   role: "user", pay_method: "payroll", is_salaried: false, salary: null,
+  _hasAccount: false,
 });
 
 const rates = ref([]);
 const ratesLoading = ref(false);
 const rateError = ref(null);
 
-const headers = { "X-Employee-Id": String(SUPER_ADMIN_ID) };
 const DURATIONS = [20, 30, 45, 60];
 
 function roleLabel(r) {
@@ -35,7 +34,7 @@ async function loadEmployees() {
   loading.value = true;
   error.value = null;
   try {
-    employees.value = await $fetch("/api/employees", { headers });
+    employees.value = await $fetch("/api/employees");
   } catch (e) {
     error.value = "Could not load employees.";
   } finally {
@@ -63,6 +62,7 @@ async function openEdit(emp) {
   form.pay_method = emp.pay_method;
   form.is_salaried = emp.is_salaried;
   form.salary = emp.salary;
+  form._hasAccount = emp.has_account;
   modalError.value = null;
   showModal.value = true;
   await loadRates(emp.id);
@@ -91,9 +91,9 @@ async function saveEmployee() {
   saving.value = true;
   try {
     if (editingId.value === null) {
-      await $fetch("/api/admin/employees", { method: "POST", headers, body });
+      await $fetch("/api/admin/employees", { method: "POST", body });
     } else {
-      await $fetch(`/api/admin/employees/${editingId.value}`, { method: "PUT", headers, body });
+      await $fetch(`/api/admin/employees/${editingId.value}`, { method: "PUT", body });
     }
     closeModal();
     await loadEmployees();
@@ -104,12 +104,70 @@ async function saveEmployee() {
   }
 }
 
+// ---- Invite generation ----
+const inviteLink = ref(null);
+const inviteError = ref(null);
+const generatingInvite = ref(false);
+const inviteCopied = ref(false);
+
+async function generateInvite() {
+  inviteError.value = null;
+  inviteLink.value = null;
+  inviteCopied.value = false;
+  generatingInvite.value = true;
+  try {
+    const data = await $fetch("/api/admin/invites", {
+      method: "POST",
+      body: { employee_id: editingId.value },
+    });
+    // Build the full signup link from the returned token.
+    inviteLink.value = `${window.location.origin}/signup?token=${data.token}`;
+  } catch (e) {
+    inviteError.value = (e && e.data) ? String(e.data) : "Could not generate an invite.";
+  } finally {
+    generatingInvite.value = false;
+  }
+}
+
+async function copyInvite() {
+  try {
+    await navigator.clipboard.writeText(inviteLink.value);
+    inviteCopied.value = true;
+    setTimeout(() => { inviteCopied.value = false; }, 2000);
+  } catch (e) {
+    // Clipboard may be unavailable; the link is still visible to copy manually.
+  }
+}
+
+// ---- Account reset ----
+const resetting = ref(false);
+const confirmReset = ref(false);
+
+async function resetAccount() {
+  inviteError.value = null;
+  resetting.value = true;
+  try {
+    await $fetch(`/api/admin/employees/${editingId.value}/reset-account`, {
+      method: "POST",
+    });
+    // They're now account-less: flip local state so the invite flow reappears.
+    form._hasAccount = false;
+    confirmReset.value = false;
+    inviteLink.value = null;
+    await loadEmployees(); // refresh the list's has_account too
+  } catch (e) {
+    inviteError.value = (e && e.data) ? String(e.data) : "Could not reset the account.";
+  } finally {
+    resetting.value = false;
+  }
+}
+
 // ---- Rate management ----
 async function loadRates(employeeId) {
   ratesLoading.value = true;
   rateError.value = null;
   try {
-    rates.value = await $fetch(`/api/admin/employees/${employeeId}/rates`, { headers });
+    rates.value = await $fetch(`/api/admin/employees/${employeeId}/rates`);
   } catch (e) {
     rateError.value = "Could not load rates.";
   } finally {
@@ -154,7 +212,7 @@ async function addRate() {
   }
   try {
     await $fetch("/api/admin/rates", {
-      method: "POST", headers,
+      method: "POST",
       body: { employee_id: editingId.value, label: newRate.label, amount: Number(newRate.amount) },
     });
     newRate.amount = null;
@@ -175,12 +233,12 @@ async function savePrivateRates() {
       const existing = privateRates.value[d];
       if (existing) {
         await $fetch(`/api/admin/rates/${existing.id}`, {
-          method: "PUT", headers,
+          method: "PUT",
           body: { label: `private_${d}`, amount: Number(newPrivate[d]) },
         });
       } else {
         await $fetch("/api/admin/rates", {
-          method: "POST", headers,
+          method: "POST",
           body: { employee_id: editingId.value, label: `private_${d}`, amount: Number(newPrivate[d]) },
         });
       }
@@ -197,7 +255,7 @@ async function saveRate(rate) {
   rateError.value = null;
   try {
     await $fetch(`/api/admin/rates/${rate.id}`, {
-      method: "PUT", headers,
+      method: "PUT",
       body: { label: rate.label, amount: Number(rate.amount) },
     });
     await loadRates(editingId.value);
@@ -208,7 +266,7 @@ async function saveRate(rate) {
 async function deleteRate(rate) {
   rateError.value = null;
   try {
-    await $fetch(`/api/admin/rates/${rate.id}`, { method: "DELETE", headers });
+    await $fetch(`/api/admin/rates/${rate.id}`, { method: "DELETE" });
     await loadRates(editingId.value);
   } catch (e) {
     rateError.value = "Could not delete rate.";
@@ -234,7 +292,7 @@ async function addCategory() {
   catSaving.value = true;
   try {
     await $fetch("/api/admin/categories", {
-      method: "POST", headers,
+      method: "POST",
       body: { name: newCat.name.trim(), is_private: newCat.is_private },
     });
     newCat.name = ""; newCat.is_private = false;
@@ -248,7 +306,7 @@ async function addCategory() {
 async function deleteCategory(cat) {
   catError.value = null;
   try {
-    await $fetch(`/api/admin/categories/${cat.id}`, { method: "DELETE", headers });
+    await $fetch(`/api/admin/categories/${cat.id}`, { method: "DELETE" });
     await loadCategories();
   } catch (e) {
     catError.value = (e && e.data) ? String(e.data) : "Could not delete category.";
@@ -259,12 +317,11 @@ onMounted(() => { loadEmployees(); loadCategories(); });
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 py-10 px-4">
+  <div class="py-10 px-4">
     <div class="max-w-4xl mx-auto">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-slate-800">Manage Employees</h1>
         <div class="flex items-center gap-3">
-          <NuxtLink to="/admin-totals" class="text-sm text-slate-500 hover:text-slate-800">Totals →</NuxtLink>
           <button @click="openCatModal"
             class="bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-600">
             + Category
@@ -321,6 +378,51 @@ onMounted(() => { loadEmployees(); loadCategories(); });
         <h2 class="text-lg font-semibold text-slate-800 mb-4">
           {{ editingId === null ? "Add Employee" : "Edit Employee" }}
         </h2>
+        <!-- Account status / invite (edit mode only) -->
+        <div v-if="editingId !== null" class="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-100">
+          <div v-if="form._hasAccount" class="flex items-center justify-between">
+            <div class="text-sm text-emerald-600 flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Account active
+            </div>
+            <template v-if="confirmReset">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-500">Reset login?</span>
+                <button type="button" @click="resetAccount" :disabled="resetting"
+                  class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 disabled:opacity-50">
+                  {{ resetting ? "…" : "Yes, reset" }}
+                </button>
+                <button type="button" @click="confirmReset = false"
+                  class="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
+            </template>
+            <button v-else type="button" @click="confirmReset = true"
+              class="text-xs text-slate-400 hover:text-red-600">Reset account</button>
+          </div>
+          <template v-else>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500">No account yet</span>
+              <button type="button" @click="generateInvite" :disabled="generatingInvite"
+                class="text-xs bg-indigo-600 text-white rounded px-3 py-1.5 hover:bg-indigo-500 disabled:opacity-50">
+                {{ generatingInvite ? "Generating…" : "Generate invite link" }}
+              </button>
+            </div>
+            <div v-if="inviteLink" class="mt-3">
+              <div class="text-xs text-slate-500 mb-1">Send this link to the employee (valid 7 days):</div>
+              <div class="flex items-center gap-2">
+                <input :value="inviteLink" readonly
+                  class="flex-1 rounded border border-slate-300 px-2 py-1 text-xs bg-white" />
+                <button type="button" @click="copyInvite"
+                  class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600 shrink-0">
+                  {{ inviteCopied ? "Copied!" : "Copy" }}
+                </button>
+              </div>
+            </div>
+            <p v-if="inviteError" class="text-red-600 text-xs mt-2">{{ inviteError }}</p>
+          </template>
+        </div>
         <form @submit.prevent="saveEmployee" class="space-y-3">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">Name</label>
