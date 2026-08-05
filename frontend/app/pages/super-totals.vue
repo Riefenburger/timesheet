@@ -1,10 +1,21 @@
 <script setup>
-const { current, prev, next, goTo, label, start, end } = usePayPeriod();
+const { current, prev, next, goTo, setType, label, start, end, type } = usePayPeriod();
 
 const employees = ref([]);
 const loading = ref(false);
 const error = ref(null);
+
+// Frequency view: 'all' = every employee, bimonthly range (the overview).
+// 'weekly'/'bimonthly'/'monthly' = only that frequency's employees, that range.
+const freqView = ref("all");
 const payFilter = ref("both");
+
+function changeFreqView(v) {
+  freqView.value = v;
+  // 'all' uses the bimonthly range; the others switch the period type.
+  setType(v === "all" ? "bimonthly" : v);
+  loadTotals();
+}
 
 const showCalendar = ref(false);
 const calYear = ref(current.value.year);
@@ -60,8 +71,14 @@ async function loadTotals() {
 }
 
 const visibleEmployees = computed(() => {
-  if (payFilter.value === "both") return employees.value;
-  return employees.value.filter((e) => e.pay_method === payFilter.value);
+  let list = employees.value;
+  if (freqView.value !== "all") {
+    list = list.filter((e) => e.pay_frequency === freqView.value);
+  }
+  if (payFilter.value !== "both") {
+    list = list.filter((e) => e.pay_method === payFilter.value);
+  }
+  return list;
 });
 
 function sumField(emp, field) {
@@ -393,9 +410,10 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
         <button @click="changePeriod(prev)"
           class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">←</button>
         <div class="relative">
-          <button @click="showCalendar = !showCalendar"
-            class="font-medium text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-50">
-            {{ label }} ▾
+          <button @click="type === 'bimonthly' ? (showCalendar = !showCalendar) : null"
+            class="font-medium text-slate-800 px-3 py-2 rounded-lg"
+            :class="type === 'bimonthly' ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'">
+            {{ label }} <span v-if="type === 'bimonthly'">▾</span>
           </button>
           <div v-if="showCalendar"
             class="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-30 w-80">
@@ -437,8 +455,15 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
         <button @click="changePeriod(next)"
           class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">→</button>
         <div class="flex-1"></div>
+        <select :value="freqView" @change="changeFreqView($event.target.value)"
+          class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="all">All employees</option>
+          <option value="weekly">Weekly</option>
+          <option value="bimonthly">Bi-monthly</option>
+          <option value="monthly">Monthly</option>
+        </select>
         <select v-model="payFilter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-          <option value="both">All employees</option>
+          <option value="both">All methods</option>
           <option value="payroll">Payroll only</option>
           <option value="check">Check only</option>
         </select>

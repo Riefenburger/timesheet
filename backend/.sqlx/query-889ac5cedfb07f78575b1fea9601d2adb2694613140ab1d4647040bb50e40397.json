@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, employee_number, pay_method FROM employees ORDER BY name",
+  "query": "SELECT id, name, employee_number, pay_method, pay_frequency FROM employees ORDER BY name",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "pay_method"
           }
         }
+      },
+      {
+        "ordinal": 4,
+        "name": "pay_frequency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "pay_frequency"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "5ef86496294a3480e1fe7cfef45d00809cc60a86d5f2f8edc18a8b46fa10a2ab"
+  "hash": "889ac5cedfb07f78575b1fea9601d2adb2694613140ab1d4647040bb50e40397"
 }
