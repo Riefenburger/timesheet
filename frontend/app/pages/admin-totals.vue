@@ -635,16 +635,12 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                     {{ l.category }}
                     <span class="ml-1 text-xs text-amber-600">(lump-sum · {{ l.entry_count }})</span>
                   </td>
-                  <td class="px-3 py-2 text-right text-slate-500">
-                    <span v-if="catRate(emp, l.category) !== null">${{ catRate(emp, l.category).toFixed(2) }}</span>
-                    <span v-else class="text-red-400 text-xs">no amount</span>
-                  </td>
                   <td colspan="4"></td>
                   <td class="px-3 py-2 text-right text-slate-700 font-medium">${{ l.amount.toFixed(2) }}</td>
                   <td colspan="3"></td>
                 </tr>
                 <tr v-if="entriesOpen[catKey(emp, l.category)]" class="bg-white">
-                  <td colspan="10" class="pl-12 pr-3 py-2">
+                  <td colspan="9" class="pl-12 pr-3 py-2">
                     <p v-if="entriesLoading[catKey(emp, l.category)]" class="text-xs text-slate-400">Loading…</p>
                     <template v-else>
                       <table class="w-full text-xs mb-2">
