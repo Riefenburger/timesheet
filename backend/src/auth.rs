@@ -38,14 +38,8 @@ where
             // Cookie present but invalid/expired — fall through to header for now.
         }
 
-        // 2. Fall back to the stub header (removed once login is fully wired).
-        let id = parts
-            .headers
-            .get("x-employee-id")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<i64>().ok())
-            .ok_or((StatusCode::UNAUTHORIZED, "Not logged in"))?;
-        Ok(CurrentEmployee { id })
+        // No valid session cookie → not authenticated. (Cookie-only; no header backdoor.)
+        Err((StatusCode::UNAUTHORIZED, "Not logged in"))
     }
 }
 
