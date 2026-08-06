@@ -102,36 +102,36 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="py-10 px-4">
+  <div class="py-6 px-4 sm:py-10">
     <div class="max-w-2xl mx-auto">
-      <h1 class="text-2xl font-bold text-slate-800 mb-6">
+      <h1 class="text-2xl font-bold text-ink-900 mb-6">
         My Time
-        <span v-if="user" class="text-base font-normal text-slate-400">— {{ user.name }}</span>
+        <span v-if="user" class="text-base font-normal text-ink-400">— {{ user.name }}</span>
       </h1>
 
-      <form @submit.prevent="addEntry" class="bg-white rounded-2xl shadow p-6 mb-8">
+      <form @submit.prevent="addEntry" class="bg-white rounded-2xl shadow p-4 sm:p-6 mb-8">
         <fieldset class="space-y-4">
-          <div class="flex gap-4">
+          <div class="flex flex-col sm:flex-row gap-4">
             <div v-if="!isLumpSum" class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Class Name &amp; Time</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Class Name &amp; Time</label>
               <input v-model="form.class_name" type="text" :required="!isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
-            <div v-if="!isLumpSum" class="w-28">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Room #</label>
+            <div v-if="!isLumpSum" class="w-full sm:w-28">
+              <label class="block text-sm font-medium text-ink-700 mb-1">Room #</label>
               <input v-model="form.teacher_room" type="text" :required="!isPrivate && !isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
-            <div class="w-40">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <div class="w-full sm:w-40">
+              <label class="block text-sm font-medium text-ink-700 mb-1">Date</label>
               <input v-model="form.entry_date" type="date" required
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
           </div>
 
-          <div class="flex gap-4 items-start">
+          <div class="flex flex-col sm:flex-row gap-4 items-stretch sm:items-start">
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Role</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Role</label>
               <select v-model="form.category" required
                 class="w-full rounded-lg border border-slate-300 px-3 py-2 capitalize">
                 <option :value="null" disabled>Select a role…</option>
@@ -139,22 +139,22 @@ onMounted(() => {
                 <option v-if="privateDurations.length" value="private">private</option>
               </select>
             </div>
-            <div v-if="!isPrivate && !isLumpSum" class="w-28">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
+            <div v-if="!isPrivate && !isLumpSum" class="w-full sm:w-28">
+              <label class="block text-sm font-medium text-ink-700 mb-1">Hours</label>
               <input v-model.number="form.hours" type="number" step="0.25" min="0" :required="!isPrivate && !isLumpSum"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
             <template v-else-if="isPrivate">
-              <div class="w-32">
-                <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
+              <div class="w-full sm:w-32">
+                <label class="block text-sm font-medium text-ink-700 mb-1">Duration</label>
                 <select v-model.number="form.session_duration" :required="isPrivate"
                   class="w-full rounded-lg border border-slate-300 px-3 py-2">
                   <option :value="null" disabled>Length…</option>
                   <option v-for="d in privateDurations" :key="d" :value="d">{{ d }} min</option>
                 </select>
               </div>
-              <div class="w-28">
-                <label class="block text-sm font-medium text-slate-600 mb-1"># Sessions</label>
+              <div class="w-full sm:w-28">
+                <label class="block text-sm font-medium text-ink-700 mb-1"># Sessions</label>
                 <input v-model.number="form.session_count" type="number" step="1" min="1" :required="isPrivate"
                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
               </div>
@@ -170,25 +170,25 @@ onMounted(() => {
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
 
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-slate-800 mb-4">Entries</h2>
-        <p v-if="loading" class="text-slate-400">Loading…</p>
-        <p v-else-if="entries.length === 0" class="text-slate-400">No entries yet.</p>
+      <div class="bg-white rounded-2xl shadow p-4 sm:p-6">
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">Entries</h2>
+        <p v-if="loading" class="text-ink-400">Loading…</p>
+        <p v-else-if="entries.length === 0" class="text-ink-400">No entries yet.</p>
         <ul v-else class="divide-y divide-slate-100">
           <li v-for="entry in entries" :key="entry.id" class="py-3">
-            <div class="flex justify-between">
-              <span class="font-medium text-slate-800">
+            <div class="flex justify-between gap-2 flex-wrap">
+              <span class="font-medium text-ink-900">
                 {{ entry.class_name }}
                 <span v-if="entry.session_duration" class="text-xs text-indigo-500 ml-1">
                   ({{ entry.session_count }}× {{ entry.session_duration }}min private)
                 </span>
-                <span v-else-if="entry.category" class="text-xs text-slate-400 ml-1 capitalize">
+                <span v-else-if="entry.category" class="text-xs text-ink-400 ml-1 capitalize">
                   {{ entry.category }}
                 </span>
               </span>
-              <span class="text-slate-500">{{ entry.entry_date }} · {{ entry.hours }}h</span>
+              <span class="text-ink-500">{{ entry.entry_date }} · {{ entry.hours }}h</span>
             </div>
-            <p v-if="entry.teacher_room" class="text-slate-600 text-sm mt-1">
+            <p v-if="entry.teacher_room" class="text-ink-700 text-sm mt-1">
               Room {{ entry.teacher_room }}
             </p>
           </li>

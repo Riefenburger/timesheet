@@ -28,16 +28,16 @@ onMounted(loadAllEntries);
   <div class="min-h-screen bg-slate-100 py-10 px-4">
     <div class="max-w-4xl mx-auto">
       <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">Admin — All Entries</h1>
+        <h1 class="text-2xl font-bold text-ink-900">Admin — All Entries</h1>
       </div>
 
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
 
       <div class="bg-white rounded-2xl shadow overflow-hidden">
-        <p v-if="loading" class="text-slate-400 p-6">Loading…</p>
-        <p v-else-if="entries.length === 0" class="text-slate-400 p-6">No entries yet.</p>
+        <p v-if="loading" class="text-ink-400 p-6">Loading…</p>
+        <p v-else-if="entries.length === 0" class="text-ink-400 p-6">No entries yet.</p>
         <table v-else class="w-full text-sm">
-          <thead class="bg-slate-50 text-slate-500 text-left">
+          <thead class="bg-slate-50 text-ink-500 text-left">
             <tr>
               <th class="px-4 py-3 font-medium">Employee</th>
               <th class="px-4 py-3 font-medium">Date</th>
@@ -49,15 +49,15 @@ onMounted(loadAllEntries);
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-for="entry in entries" :key="entry.id">
-              <td class="px-4 py-3 text-slate-800">
+              <td class="px-4 py-3 text-ink-900">
                 {{ entry.employee_name }}
-                <span class="text-slate-400">#{{ entry.employee_number }}</span>
+                <span class="text-ink-400">#{{ entry.employee_number }}</span>
               </td>
-              <td class="px-4 py-3 text-slate-600">{{ entry.entry_date }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ entry.class_name }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ entry.teacher_room }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ entry.details }}</td>
-              <td class="px-4 py-3 text-slate-800 text-right">{{ entry.hours }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ entry.entry_date }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ entry.class_name }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ entry.teacher_room }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ entry.details }}</td>
+              <td class="px-4 py-3 text-ink-900 text-right">{{ entry.hours }}</td>
             </tr>
           </tbody>
         </table>

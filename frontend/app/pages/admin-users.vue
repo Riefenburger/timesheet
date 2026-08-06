@@ -405,7 +405,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
   <div class="py-10 px-4">
     <div class="max-w-4xl mx-auto">
       <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">Manage Employees</h1>
+        <h1 class="text-2xl font-bold text-ink-900">Manage Employees</h1>
         <div class="flex items-center gap-3">
           <button @click="openCatModal"
             class="bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-600">
@@ -421,9 +421,9 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
 
       <div class="bg-white rounded-2xl shadow overflow-x-auto">
-        <p v-if="loading" class="text-slate-400 p-6">Loading…</p>
+        <p v-if="loading" class="text-ink-400 p-6">Loading…</p>
         <table v-else class="w-full text-sm">
-          <thead class="bg-slate-50 text-slate-500 text-left">
+          <thead class="bg-slate-50 text-ink-500 text-left">
             <tr>
               <th class="px-4 py-3 font-medium">Name</th>
               <th class="px-4 py-3 font-medium">Employee #</th>
@@ -434,13 +434,13 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-for="emp in employees" :key="emp.id" class="group">
-              <td class="px-4 py-3 text-slate-800">{{ emp.name }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ emp.employee_number }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ roleLabel(emp.role) }}</td>
-              <td class="px-4 py-3 text-slate-600 capitalize">{{ emp.pay_method }}</td>
+              <td class="px-4 py-3 text-ink-900">{{ emp.name }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ emp.employee_number }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ roleLabel(emp.role) }}</td>
+              <td class="px-4 py-3 text-ink-700 capitalize">{{ emp.pay_method }}</td>
               <td class="px-4 py-3">
                 <button @click="openEdit(emp)"
-                  class="opacity-0 group-hover:opacity-100 transition text-slate-400 hover:text-slate-800"
+                  class="opacity-0 group-hover:opacity-100 transition text-ink-400 hover:text-ink-900"
                   title="Edit employee">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
                     stroke="currentColor" stroke-width="2">
@@ -460,7 +460,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
       @click.self="closeModal">
       <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
-        <h2 class="text-lg font-semibold text-slate-800 mb-4">
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">
           {{ editingId === null ? "Add Employee" : "Edit Employee" }}
         </h2>
         <!-- Account status / invite (edit mode only) -->
@@ -474,28 +474,28 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             </div>
             <template v-if="confirmReset">
               <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-500">Reset login?</span>
+                <span class="text-xs text-ink-500">Reset login?</span>
                 <button type="button" @click="resetAccount" :disabled="resetting"
                   class="text-xs bg-red-500 text-white rounded px-2 py-1 hover:bg-red-600 disabled:opacity-50">
                   {{ resetting ? "…" : "Yes, reset" }}
                 </button>
                 <button type="button" @click="confirmReset = false"
-                  class="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+                  class="text-xs text-ink-400 hover:text-ink-700">Cancel</button>
               </div>
             </template>
             <button v-else type="button" @click="confirmReset = true"
-              class="text-xs text-slate-400 hover:text-red-600">Reset account</button>
+              class="text-xs text-ink-400 hover:text-red-600">Reset account</button>
           </div>
           <template v-else>
             <div class="flex items-center justify-between">
-              <span class="text-sm text-slate-500">No account yet</span>
+              <span class="text-sm text-ink-500">No account yet</span>
               <button type="button" @click="generateInvite" :disabled="generatingInvite"
                 class="text-xs bg-indigo-600 text-white rounded px-3 py-1.5 hover:bg-indigo-500 disabled:opacity-50">
                 {{ generatingInvite ? "Generating…" : "Generate invite link" }}
               </button>
             </div>
             <div v-if="inviteLink" class="mt-3">
-              <div class="text-xs text-slate-500 mb-1">Send this link to the employee (valid 7 days):</div>
+              <div class="text-xs text-ink-500 mb-1">Send this link to the employee (valid 7 days):</div>
               <div class="flex items-center gap-2">
                 <input :value="inviteLink" readonly
                   class="flex-1 rounded border border-slate-300 px-2 py-1 text-xs bg-white" />
@@ -510,20 +510,20 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
         </div>
         <form @submit.prevent="saveEmployee" class="space-y-3">
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Name</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Name</label>
             <input v-model="form.name" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Employee # <span class="text-slate-400 font-normal">(payroll only)</span></label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Employee # <span class="text-ink-400 font-normal">(payroll only)</span></label>
             <input v-model="form.employee_number" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Email (optional)</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Email (optional)</label>
             <input v-model="form.email" type="email" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div class="flex gap-3">
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Role</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Role</label>
               <select v-model="form.role" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
@@ -531,7 +531,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
               </select>
             </div>
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Pay Method</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Pay Method</label>
               <select v-model="form.pay_method" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                 <option value="payroll">Payroll</option>
                 <option value="check">Check</option>
@@ -539,7 +539,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Pay Frequency</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Pay Frequency</label>
             <select v-model="form.pay_frequency" class="w-full rounded-lg border border-slate-300 px-3 py-2">
               <option value="weekly">Weekly</option>
               <option value="bimonthly">Bi-monthly (1–15, 16–end)</option>
@@ -548,10 +548,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           </div>
           <div class="flex items-center gap-2 pt-1">
             <input v-model="form.is_salaried" type="checkbox" id="salaried" class="rounded" />
-            <label for="salaried" class="text-sm text-slate-600">Salaried employee</label>
+            <label for="salaried" class="text-sm text-ink-700">Salaried employee</label>
           </div>
           <div v-if="form.is_salaried">
-            <label class="block text-sm font-medium text-slate-600 mb-1">Salary (per period)</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Salary (per period)</label>
             <input v-model.number="form.salary" type="number" step="0.01" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <p v-if="modalError" class="text-red-600 text-sm">{{ modalError }}</p>
@@ -559,20 +559,20 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
 
         <!-- Rates: edit mode only -->
         <div v-if="editingId !== null" class="mt-6 pt-5 border-t border-slate-100">
-          <h3 class="text-sm font-semibold text-slate-700 mb-3">Categories &amp; Rates</h3>
-          <p v-if="ratesLoading" class="text-slate-400 text-sm">Loading rates…</p>
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">Categories &amp; Rates</h3>
+          <p v-if="ratesLoading" class="text-ink-400 text-sm">Loading rates…</p>
           <template v-else>
-            <div v-if="normalRates.length === 0 && !hasAnyPrivate" class="text-slate-400 text-sm mb-3">
+            <div v-if="normalRates.length === 0 && !hasAnyPrivate" class="text-ink-400 text-sm mb-3">
               No categories assigned yet.
             </div>
 
             <!-- Normal rates -->
             <div v-for="rate in normalRates" :key="rate.id" class="flex items-center gap-2 mb-2">
-              <span class="w-24 text-sm text-slate-700 capitalize">
+              <span class="w-24 text-sm text-ink-700 capitalize">
                 {{ rate.label }}
                 <span v-if="isLumpSumLabel(rate.label)" class="text-xs text-amber-600 normal-case">(flat)</span>
               </span>
-              <span class="text-slate-400">$</span>
+              <span class="text-ink-400">$</span>
               <input v-model.number="rate.amount" type="number" step="0.01" min="0"
                 class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
               <button @click="saveRate(rate)" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
@@ -581,11 +581,11 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
 
             <!-- Private rates (grouped by duration) -->
             <div v-if="hasAnyPrivate" class="mt-3 mb-2">
-              <div class="text-xs font-medium text-slate-500 mb-1">Private (per duration)</div>
+              <div class="text-xs font-medium text-ink-500 mb-1">Private (per duration)</div>
               <div v-for="d in durationMinutes" :key="d">
                 <div v-if="privateRates[d]" class="flex items-center gap-2 mb-2">
-                  <span class="w-24 text-sm text-slate-700">{{ d }} min</span>
-                  <span class="text-slate-400">$</span>
+                  <span class="w-24 text-sm text-ink-700">{{ d }} min</span>
+                  <span class="text-ink-400">$</span>
                   <input v-model.number="privateRates[d].amount" type="number" step="0.01" min="0"
                     class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
                   <button @click="saveRate(privateRates[d])" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
@@ -600,7 +600,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
                 <option value="" disabled>Category…</option>
                 <option v-for="c in availableCategories" :key="c" :value="c">{{ c }}</option>
               </select>
-              <span class="text-slate-400">$</span>
+              <span class="text-ink-400">$</span>
               <input v-model.number="newRate.amount" type="number" step="0.01" min="0" placeholder="0.00"
                 class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
               <button @click="addRate" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
@@ -613,17 +613,17 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
                 {{ hasAnyPrivate ? "+ Edit private durations" : "+ Add private rates" }}
               </button>
               <div v-else class="border border-slate-200 rounded-lg p-3 mt-1">
-                <div class="text-xs font-medium text-slate-500 mb-2">Set a rate for each private duration (leave blank to skip):</div>
+                <div class="text-xs font-medium text-ink-500 mb-2">Set a rate for each private duration (leave blank to skip):</div>
                 <div v-for="d in durationMinutes" :key="d" class="flex items-center gap-2 mb-2">
-                  <span class="w-20 text-sm text-slate-700">{{ d }} min</span>
-                  <span class="text-slate-400">$</span>
+                  <span class="w-20 text-sm text-ink-700">{{ d }} min</span>
+                  <span class="text-ink-400">$</span>
                   <input v-model.number="newPrivate[d]" type="number" step="0.01" min="0"
                     :placeholder="privateRates[d] ? String(privateRates[d].amount) : '0.00'"
                     class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
                 </div>
                 <div class="flex gap-2 mt-1">
                   <button @click="savePrivateRates" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">Save private</button>
-                  <button @click="showPrivateAdd = false" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">Cancel</button>
+                  <button @click="showPrivateAdd = false" class="text-xs text-ink-400 hover:text-ink-700 px-2 py-1">Cancel</button>
                 </div>
               </div>
             </div>
@@ -635,7 +635,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
 
         <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-100">
           <button type="button" @click="closeModal"
-            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-slate-50">
             {{ editingId === null ? "Cancel" : "Done" }}
           </button>
           <button type="button" @click="saveEmployee" :disabled="saving"
@@ -651,10 +651,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
       @click.self="closeCatModal">
       <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
-        <h2 class="text-lg font-semibold text-slate-800 mb-4">Manage Categories</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">Manage Categories</h2>
         <div class="space-y-2 mb-4">
           <div v-for="cat in categories" :key="cat.id" class="flex items-center justify-between py-1 border-b border-slate-50">
-            <span class="text-sm text-slate-700 capitalize">
+            <span class="text-sm text-ink-700 capitalize">
               {{ cat.name }}
               <span v-if="cat.is_private" class="text-xs text-indigo-500 ml-1">(private)</span>
               <span v-if="cat.is_lump_sum" class="text-xs text-amber-600 ml-1">(lump-sum)</span>
@@ -668,10 +668,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
         </div>
         <!-- Private duration management -->
         <div v-if="showDurationPanel" class="mb-4 p-3 rounded-lg bg-indigo-50/50 border border-indigo-100">
-          <div class="text-xs font-medium text-slate-600 mb-2">Private duration tiers &amp; global rates</div>
+          <div class="text-xs font-medium text-ink-700 mb-2">Private duration tiers &amp; global rates</div>
           <div v-for="dur in durations" :key="dur.id" class="flex items-center gap-2 mb-2">
-            <span class="w-16 text-sm text-slate-700">{{ dur.duration_minutes }} min</span>
-            <span class="text-slate-400">$</span>
+            <span class="w-16 text-sm text-ink-700">{{ dur.duration_minutes }} min</span>
+            <span class="text-ink-400">$</span>
             <input v-model.number="dur.global_rate" type="number" step="0.01" min="0"
               class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
             <button @click="saveDurationRate(dur)" class="text-xs bg-slate-700 text-white rounded px-2 py-1 hover:bg-slate-600">Save</button>
@@ -680,7 +680,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           <div class="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-100">
             <input v-model.number="newDuration.minutes" type="number" min="1" placeholder="min"
               class="w-16 rounded border border-slate-300 px-2 py-1 text-sm" />
-            <span class="text-slate-400">$</span>
+            <span class="text-ink-400">$</span>
             <input v-model.number="newDuration.rate" type="number" step="0.01" min="0" placeholder="rate"
               class="w-24 rounded border border-slate-300 px-2 py-1 text-sm" />
             <button @click="addDuration" class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-500">+ Add</button>
@@ -694,14 +694,14 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             <button @click="addCategory" :disabled="catSaving"
               class="text-sm bg-emerald-600 text-white rounded px-3 py-2 hover:bg-emerald-500 disabled:opacity-50">Add</button>
           </div>
-          <label class="flex items-center gap-2 mt-2 text-xs text-slate-600">
+          <label class="flex items-center gap-2 mt-2 text-xs text-ink-700">
             <input v-model="newCat.is_lump_sum" type="checkbox" class="rounded" />
             Lump-sum category (flat amount per entry, no hours)
           </label>
         </div>
         <p v-if="catError" class="text-red-600 text-sm mt-2">{{ catError }}</p>
         <div class="flex justify-end mt-4">
-          <button @click="closeCatModal" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Done</button>
+          <button @click="closeCatModal" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-slate-50">Done</button>
         </div>
       </div>
     </div>

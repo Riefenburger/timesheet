@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+@theme {
+  /* Royal-blue text scale — swap these to retune the whole theme in one place. */
+  --color-ink-900: #1e3a8a;  /* headings / strongest text */
+  --color-ink-700: #3451b2;  /* primary body text */
+  --color-ink-500: #5468c4;  /* secondary text */
+  --color-ink-400: #8794c9;  /* muted / meta text */
+}

@@ -375,14 +375,14 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
   <div class="py-10 px-4">
     <div class="max-w-6xl mx-auto">
       <div class="mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">Admin — Period Totals</h1>
+        <h1 class="text-2xl font-bold text-ink-900">Admin — Period Totals</h1>
       </div>
       <div class="bg-white rounded-2xl shadow p-4 mb-6 flex items-center gap-4">
         <button @click="changePeriod(prev)"
           class="rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">←</button>
         <div class="relative">
           <button @click="showCalendar = !showCalendar"
-            class="font-medium text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-50">
+            class="font-medium text-ink-900 px-3 py-2 rounded-lg hover:bg-slate-50">
             {{ label }} ▾
           </button>
           <div v-if="showCalendar"
@@ -407,7 +407,7 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
             </div>
             <div class="grid grid-cols-7 gap-px mb-1">
               <div v-for="(d, i) in ['S','M','T','W','T','F','S']" :key="i"
-                class="text-center text-xs text-slate-400 font-medium">{{ d }}</div>
+                class="text-center text-xs text-ink-400 font-medium">{{ d }}</div>
             </div>
             <div class="grid grid-cols-7 gap-px">
               <template v-for="(week, wi) in calendarWeeks" :key="wi">
@@ -429,9 +429,9 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
       <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
 
       <div class="bg-white rounded-2xl shadow overflow-x-auto">
-        <p v-if="loading" class="text-slate-400 p-6">Loading…</p>
+        <p v-if="loading" class="text-ink-400 p-6">Loading…</p>
         <table v-else class="w-full text-sm">
-          <thead class="bg-slate-50 text-slate-500 text-left">
+          <thead class="bg-slate-50 text-ink-500 text-left">
             <tr>
               <th class="px-3 py-3 font-medium">Employee / Category</th>
               <th class="px-3 py-3 font-medium text-right">Regular</th>
@@ -447,14 +447,14 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
           <tbody class="divide-y divide-slate-100">
             <template v-for="emp in visibleEmployees" :key="emp.employee_id">
               <tr class="bg-white">
-                <td class="px-3 py-3 text-slate-800 font-medium whitespace-nowrap">
+                <td class="px-3 py-3 text-ink-900 font-medium whitespace-nowrap">
                   {{ emp.employee_name }}
-                  <span class="text-slate-400 font-normal">#{{ emp.employee_number }}</span>
+                  <span class="text-ink-400 font-normal">#{{ emp.employee_number }}</span>
                 </td>
-                <td class="px-3 py-3 text-right text-slate-800">{{ (sumField(emp, "regular_hours") + privateHours(emp)).toFixed(2) }}</td>
-                <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "overtime_hours").toFixed(2) }}</td>
-                <td class="px-3 py-3 text-right text-slate-800">{{ sumField(emp, "sick_hours").toFixed(2) }}</td>
-                <td class="px-3 py-3 text-right text-slate-400">{{ sumField(emp, "logged_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-ink-900">{{ (sumField(emp, "regular_hours") + privateHours(emp)).toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-ink-900">{{ sumField(emp, "overtime_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-ink-900">{{ sumField(emp, "sick_hours").toFixed(2) }}</td>
+                <td class="px-3 py-3 text-right text-ink-400">{{ sumField(emp, "logged_hours").toFixed(2) }}</td>
                 <td class="px-3 py-2 text-right">
                   <input v-model.number="emp._other" type="number" step="0.01" min="0"
                     class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
@@ -481,9 +481,9 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
 
               <template v-for="c in emp.categories" :key="emp.employee_id + '-' + c.category">
                 <tr class="bg-slate-50/50">
-                  <td class="pl-8 pr-3 py-2 text-slate-600 capitalize">
+                  <td class="pl-8 pr-3 py-2 text-ink-700 capitalize">
                     <button @click="toggleCategoryEntries(emp, c.category)"
-                      class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                      class="text-ink-400 hover:text-ink-700 mr-1 font-mono">
                       {{ entriesOpen[catKey(emp, c.category)] ? "▾" : "▸" }}
                     </button>
                     {{ c.category }}
@@ -501,7 +501,7 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                     <input v-model.number="c._sick" type="number" step="0.25" min="0"
                       class="w-20 rounded border border-slate-300 px-2 py-1 text-right" />
                   </td>
-                  <td class="px-3 py-2 text-right text-slate-500">{{ Number(c.logged_hours).toFixed(2) }}</td>
+                  <td class="px-3 py-2 text-right text-ink-500">{{ Number(c.logged_hours).toFixed(2) }}</td>
                   <td colspan="3"></td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
                     <span v-if="isDirty(c) && isMismatch(c)" class="text-xs text-red-600 mr-1">⚠</span>
@@ -510,33 +510,33 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                       {{ c._saving ? "…" : "Save" }}
                     </button>
                     <button v-else-if="c.admin_edited" @click="revertCategory(emp, c)" :disabled="c._saving"
-                      class="text-xs text-slate-400 hover:text-slate-700 px-1" title="Revert to computed">↻</button>
+                      class="text-xs text-ink-400 hover:text-ink-700 px-1" title="Revert to computed">↻</button>
                   </td>
                 </tr>
                 <tr v-if="entriesOpen[catKey(emp, c.category)]" class="bg-white">
                   <td colspan="9" class="pl-12 pr-3 py-2">
-                    <p v-if="entriesLoading[catKey(emp, c.category)]" class="text-xs text-slate-400">Loading…</p>
+                    <p v-if="entriesLoading[catKey(emp, c.category)]" class="text-xs text-ink-400">Loading…</p>
                     <template v-else>
                       <table class="w-full text-xs mb-2">
                         <tbody>
-                          <tr v-for="s in entriesData[catKey(emp, c.category)]" :key="s.id" class="text-slate-500">
+                          <tr v-for="s in entriesData[catKey(emp, c.category)]" :key="s.id" class="text-ink-500">
                             <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
                             <td class="py-1">{{ s.class_name }}</td>
                             <td class="py-1">Rm {{ s.teacher_room }}</td>
                             <td class="py-1 text-right">{{ s.hours }}h</td>
                             <td class="py-1 text-right w-24">
                               <button @click="openEditEntry(emp, catKey(emp, c.category), s)"
-                                class="text-slate-400 hover:text-slate-700 mr-2">edit</button>
+                                class="text-ink-400 hover:text-ink-700 mr-2">edit</button>
                               <template v-if="confirmDeleteId === s.id">
                                 <button @click="doDelete(emp, catKey(emp, c.category), s.id)"
                                   class="text-red-600 mr-1">✓</button>
-                                <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                                <button @click="confirmDeleteId = null" class="text-ink-400">✕</button>
                               </template>
                               <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
                             </td>
                           </tr>
                           <tr v-if="!entriesData[catKey(emp, c.category)] || entriesData[catKey(emp, c.category)].length === 0">
-                            <td colspan="5" class="py-1 text-slate-400">No entries in this category.</td>
+                            <td colspan="5" class="py-1 text-ink-400">No entries in this category.</td>
                           </tr>
                         </tbody>
                       </table>
@@ -548,22 +548,22 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
               </template>
 
               <tr v-if="emp.privates.length" class="bg-slate-50/50">
-                <td class="pl-8 pr-3 py-2 text-slate-600">
+                <td class="pl-8 pr-3 py-2 text-ink-700">
                   <button @click="emp._privateExpanded = !emp._privateExpanded"
-                    class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                    class="text-ink-400 hover:text-ink-700 mr-1 font-mono">
                     {{ emp._privateExpanded ? "▾" : "▸" }}
                   </button>
                   private
-                  <span class="text-xs text-slate-400">({{ privateHours(emp).toFixed(2) }} hrs)</span>
+                  <span class="text-xs text-ink-400">({{ privateHours(emp).toFixed(2) }} hrs)</span>
                 </td>
                 <td colspan="8"></td>
               </tr>
               <template v-if="emp._privateExpanded">
                 <template v-for="p in emp.privates" :key="emp.employee_id + '-priv-' + p.session_duration">
                   <tr class="bg-slate-50">
-                    <td class="pl-16 pr-3 py-2 text-slate-500">
+                    <td class="pl-16 pr-3 py-2 text-ink-500">
                       <button @click="togglePrivateEntries(emp, p.session_duration)"
-                        class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                        class="text-ink-400 hover:text-ink-700 mr-1 font-mono">
                         {{ entriesOpen[privKey(emp, p.session_duration)] ? "▾" : "▸" }}
                       </button>
                       {{ p.session_duration }} min
@@ -573,10 +573,10 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                       <div class="flex items-center justify-end gap-1">
                         <input v-model.number="p._count" type="number" step="1" min="0"
                           class="w-16 rounded border border-slate-300 px-2 py-1 text-right" />
-                        <span class="text-xs text-slate-400">sess.</span>
+                        <span class="text-xs text-ink-400">sess.</span>
                       </div>
                     </td>
-                    <td colspan="3" class="px-3 py-2 text-right text-slate-400 text-xs">
+                    <td colspan="3" class="px-3 py-2 text-right text-ink-400 text-xs">
                       logged: {{ ((p.session_duration / 60) * p.logged_count).toFixed(2) }} hrs
                     </td>
                     <td colspan="3"></td>
@@ -587,33 +587,33 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
                         {{ p._saving ? "…" : "Save" }}
                       </button>
                       <button v-else-if="p.admin_edited" @click="revertPrivate(emp, p)" :disabled="p._saving"
-                        class="text-xs text-slate-400 hover:text-slate-700 px-1" title="Revert to computed">↻</button>
+                        class="text-xs text-ink-400 hover:text-ink-700 px-1" title="Revert to computed">↻</button>
                     </td>
                   </tr>
                   <tr v-if="entriesOpen[privKey(emp, p.session_duration)]" class="bg-white">
                     <td colspan="9" class="pl-20 pr-3 py-2">
-                      <p v-if="entriesLoading[privKey(emp, p.session_duration)]" class="text-xs text-slate-400">Loading…</p>
+                      <p v-if="entriesLoading[privKey(emp, p.session_duration)]" class="text-xs text-ink-400">Loading…</p>
                       <template v-else>
                         <table class="w-full text-xs mb-2">
                           <tbody>
-                            <tr v-for="s in entriesData[privKey(emp, p.session_duration)]" :key="s.id" class="text-slate-500">
+                            <tr v-for="s in entriesData[privKey(emp, p.session_duration)]" :key="s.id" class="text-ink-500">
                               <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
                               <td class="py-1">{{ s.class_name }}</td>
                               <td class="py-1">{{ s.session_count }}× {{ s.session_duration }}min</td>
                               <td class="py-1 text-right">{{ s.hours }}h</td>
                               <td class="py-1 text-right w-24">
                                 <button @click="openEditEntry(emp, privKey(emp, p.session_duration), s)"
-                                  class="text-slate-400 hover:text-slate-700 mr-2">edit</button>
+                                  class="text-ink-400 hover:text-ink-700 mr-2">edit</button>
                                 <template v-if="confirmDeleteId === s.id">
                                   <button @click="doDelete(emp, privKey(emp, p.session_duration), s.id)"
                                     class="text-red-600 mr-1">✓</button>
-                                  <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                                  <button @click="confirmDeleteId = null" class="text-ink-400">✕</button>
                                 </template>
                                 <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
                               </td>
                             </tr>
                             <tr v-if="!entriesData[privKey(emp, p.session_duration)] || entriesData[privKey(emp, p.session_duration)].length === 0">
-                              <td colspan="5" class="py-1 text-slate-400">No private entries at this duration.</td>
+                              <td colspan="5" class="py-1 text-ink-400">No private entries at this duration.</td>
                             </tr>
                           </tbody>
                         </table>
@@ -627,37 +627,37 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
               <!-- Lump-sum category rows -->
               <template v-for="l in emp.lumpSums" :key="emp.employee_id + '-lump-' + l.category">
                 <tr class="bg-amber-50/40">
-                  <td class="pl-8 pr-3 py-2 text-slate-600 capitalize">
+                  <td class="pl-8 pr-3 py-2 text-ink-700 capitalize">
                     <button @click="toggleCategoryEntries(emp, l.category)"
-                      class="text-slate-400 hover:text-slate-700 mr-1 font-mono">
+                      class="text-ink-400 hover:text-ink-700 mr-1 font-mono">
                       {{ entriesOpen[catKey(emp, l.category)] ? "▾" : "▸" }}
                     </button>
                     {{ l.category }}
                     <span class="ml-1 text-xs text-amber-600">(lump-sum · {{ l.entry_count }})</span>
                   </td>
                   <td colspan="4"></td>
-                  <td class="px-3 py-2 text-right text-slate-700 font-medium">${{ l.amount.toFixed(2) }}</td>
+                  <td class="px-3 py-2 text-right text-ink-700 font-medium">${{ l.amount.toFixed(2) }}</td>
                   <td colspan="3"></td>
                 </tr>
                 <tr v-if="entriesOpen[catKey(emp, l.category)]" class="bg-white">
                   <td colspan="9" class="pl-12 pr-3 py-2">
-                    <p v-if="entriesLoading[catKey(emp, l.category)]" class="text-xs text-slate-400">Loading…</p>
+                    <p v-if="entriesLoading[catKey(emp, l.category)]" class="text-xs text-ink-400">Loading…</p>
                     <template v-else>
                       <table class="w-full text-xs mb-2">
                         <tbody>
-                          <tr v-for="s in entriesData[catKey(emp, l.category)]" :key="s.id" class="text-slate-500">
+                          <tr v-for="s in entriesData[catKey(emp, l.category)]" :key="s.id" class="text-ink-500">
                             <td class="py-1 whitespace-nowrap">{{ s.entry_date }}</td>
                             <td class="py-1 text-right w-24">
                               <template v-if="confirmDeleteId === s.id">
                                 <button @click="doDelete(emp, catKey(emp, l.category), s.id)"
                                   class="text-red-600 mr-1">✓</button>
-                                <button @click="confirmDeleteId = null" class="text-slate-400">✕</button>
+                                <button @click="confirmDeleteId = null" class="text-ink-400">✕</button>
                               </template>
                               <button v-else @click="confirmDeleteId = s.id" class="text-red-500 hover:text-red-700">del</button>
                             </td>
                           </tr>
                           <tr v-if="!entriesData[catKey(emp, l.category)] || entriesData[catKey(emp, l.category)].length === 0">
-                            <td colspan="2" class="py-1 text-slate-400">No entries.</td>
+                            <td colspan="2" class="py-1 text-ink-400">No entries.</td>
                           </tr>
                         </tbody>
                       </table>
@@ -678,53 +678,53 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
       @click.self="closeEntryModal">
       <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
-        <h2 class="text-lg font-semibold text-slate-800 mb-4">
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">
           {{ entryModalMode === "add" ? "Add Entry" : "Edit Entry" }}
-          <span v-if="entryModalEmp" class="text-sm font-normal text-slate-500">— {{ entryModalEmp.employee_name }}</span>
+          <span v-if="entryModalEmp" class="text-sm font-normal text-ink-500">— {{ entryModalEmp.employee_name }}</span>
         </h2>
         <div class="space-y-3">
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Date</label>
             <input v-model="entryForm.entry_date" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div class="flex gap-3">
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Class &amp; Time</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Class &amp; Time</label>
               <input v-model="entryForm.class_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
             <div class="w-24">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Room</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Room</label>
               <input v-model="entryForm.teacher_room" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">Category</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Category</label>
             <select v-model="entryForm.category" class="w-full rounded-lg border border-slate-300 px-3 py-2">
               <option :value="null">— none —</option>
               <option v-for="cat in allCategories" :key="cat.id" :value="cat.name" class="capitalize">{{ cat.name }}</option>
             </select>
           </div>
           <div v-if="!entryIsPrivate">
-            <label class="block text-sm font-medium text-slate-600 mb-1">Hours</label>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Hours</label>
             <input v-model.number="entryForm.hours" type="number" step="0.25" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
           </div>
           <div v-else class="flex gap-3">
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1">Duration</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1">Duration</label>
               <select v-model.number="entryForm.session_duration" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                 <option :value="null" disabled>Length…</option>
                 <option v-for="d in durationMinutes" :key="d" :value="d">{{ d }} min</option>
               </select>
             </div>
             <div class="flex-1">
-              <label class="block text-sm font-medium text-slate-600 mb-1"># Sessions</label>
+              <label class="block text-sm font-medium text-ink-700 mb-1"># Sessions</label>
               <input v-model.number="entryForm.session_count" type="number" step="1" min="1" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </div>
           </div>
           <p v-if="entryModalError" class="text-red-600 text-sm">{{ entryModalError }}</p>
           <div class="flex justify-end gap-3 pt-2">
             <button @click="closeEntryModal"
-              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-slate-50">Cancel</button>
             <button @click="saveEntryModal" :disabled="savingModal"
               class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
               {{ savingModal ? "Saving…" : "Save" }}
