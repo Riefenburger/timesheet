@@ -3,7 +3,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   // Public routes that don't require auth.
   const publicRoutes = ["/login", "/signup"];
-  if (publicRoutes.includes(to.path)) return;
+  // Normalize trailing slash — prod build may serve "/signup/" while dev serves "/signup".
+  const path = to.path.replace(/\/$/, "") || "/";
+  if (publicRoutes.includes(path)) return;
 
   // Make sure we've checked auth state at least once.
   if (!loaded.value) await fetchMe();
@@ -16,10 +18,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Role-gate the admin/super pages.
   const superOnly = ["/super-totals", "/admin-users"];
   const adminOrSuper = ["/admin-totals"];
-  if (superOnly.includes(to.path) && !isSuperAdmin()) {
+  if (superOnly.includes(path) && !isSuperAdmin()) {
     return navigateTo("/");
   }
-  if (adminOrSuper.includes(to.path) && !isAdmin()) {
+  if (adminOrSuper.includes(path) && !isAdmin()) {
     return navigateTo("/");
   }
 });
