@@ -34,8 +34,7 @@ async function doLogin() {
         </div>
         <div>
           <label class="block text-sm font-medium text-ink-700 mb-1">Password</label>
-          <input v-model="password" type="password" required autocomplete="current-password"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          <PasswordInput v-model="password" autocomplete="current-password" />
         </div>
         <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
         <button type="submit" :disabled="submitting"

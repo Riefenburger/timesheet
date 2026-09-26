@@ -77,13 +77,11 @@ async function doSignup() {
           </div>
           <div>
             <label class="block text-sm font-medium text-ink-700 mb-1">Password</label>
-            <input v-model="password" type="password" required autocomplete="new-password"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <PasswordInput v-model="password" autocomplete="new-password" />
           </div>
           <div>
             <label class="block text-sm font-medium text-ink-700 mb-1">Confirm password</label>
-            <input v-model="confirmPassword" type="password" required autocomplete="new-password"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <PasswordInput v-model="confirmPassword" autocomplete="new-password" />
           </div>
           <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
           <button type="submit" :disabled="submitting"
