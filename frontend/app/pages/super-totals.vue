@@ -70,16 +70,21 @@ async function loadTotals() {
   }
 }
 
-const visibleEmployees = computed(() => {
-  let list = employees.value;
-  if (freqView.value !== "all") {
-    list = list.filter((e) => e.pay_frequency === freqView.value);
+// Mirrors the backend filter in export_totals. Shared by the on-screen list and
+// the export popup's preview so the two can never disagree about who is included.
+function matchesFilters(list, freq, method) {
+  let out = list;
+  if (freq !== "all") {
+    out = out.filter((e) => e.pay_frequency === freq);
   }
-  if (payFilter.value !== "both") {
-    list = list.filter((e) => e.pay_method === payFilter.value);
+  if (method !== "both") {
+    out = out.filter((e) => e.pay_method === method);
   }
-  return list;
-});
+  return out;
+}
+
+const visibleEmployees = computed(() =>
+  matchesFilters(employees.value, freqView.value, payFilter.value));
 
 function sumField(emp, field) {
   return emp.categories.reduce((a, c) => a + Number(c[field]), 0);
@@ -397,15 +402,36 @@ function pickPeriod(half) {
 }
 function changePeriod(fn) { fn(); loadTotals(); }
 
-async function exportExcel() {
+// ---- Export popup ----
+// The filter is chosen here at export time rather than taken from the screen.
+// Note the screen's frequency dropdown also changes the displayed date range
+// (changeFreqView calls setType), while this popup only filters — so the period
+// is shown inside it to make clear which range is being exported.
+const showExportModal = ref(false);
+const exportFreq = ref("all");
+const exportPayMethod = ref("both");
+
+const exportMatches = computed(() =>
+  matchesFilters(employees.value, exportFreq.value, exportPayMethod.value));
+
+function openExportModal() {
+  // Re-sync from the screen on every open, so the last export's choice can't
+  // linger (this state outlives the modal).
+  exportFreq.value = freqView.value;
+  exportPayMethod.value = payFilter.value;
+  showExportModal.value = true;
+}
+function closeExportModal() { showExportModal.value = false; }
+
+async function exportExcel(frequency, payMethod) {
   // No Run Number prompt: the header cell is left blank on the sheet for the
   // client to fill in, like Check Date and Run Date.
   try {
     const params = new URLSearchParams({
       period_start: start.value,
       period_end: end.value,
-      frequency: freqView.value,
-      pay_method: payFilter.value,
+      frequency,
+      pay_method: payMethod,
     });
     const res = await fetch(`/api/admin/totals/export?${params.toString()}`);
     if (!res.ok) {
@@ -421,6 +447,7 @@ async function exportExcel() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    closeExportModal();
   } catch (e) {
     error.value = "Could not generate the export.";
   }
@@ -496,7 +523,7 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
           <option value="payroll">Payroll only</option>
           <option value="check">Check only</option>
         </select>
-        <button @click="exportExcel"
+        <button @click="openExportModal"
           class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500">
           Export to Excel
         </button>
@@ -761,6 +788,64 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
             </template>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Export options modal -->
+    <div v-if="showExportModal"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4 py-8 overflow-y-auto"
+      @click.self="closeExportModal">
+      <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-auto">
+        <h2 class="text-lg font-semibold text-ink-900 mb-1">Export to Excel</h2>
+        <!-- The popup filters but never changes the range, so name the period. -->
+        <p class="text-sm text-ink-400 mb-4">Period: {{ label }}</p>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Pay Frequency</label>
+            <select v-model="exportFreq" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="all">All employees</option>
+              <option value="weekly">Weekly</option>
+              <option value="bimonthly">Bi-monthly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Pay Method</label>
+            <select v-model="exportPayMethod" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="both">All methods</option>
+              <option value="payroll">Payroll only</option>
+              <option value="check">Check only</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Live preview of exactly who the backend will include. -->
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <p class="text-sm font-medium" :class="exportMatches.length === 0 ? 'text-red-600' : 'text-ink-700'">
+            <template v-if="exportMatches.length === 0">No employees match these filters.</template>
+            <template v-else-if="exportMatches.length === 1">1 employee will be exported</template>
+            <template v-else>{{ exportMatches.length }} employees will be exported</template>
+          </p>
+          <div v-if="exportMatches.length" class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+            <div v-for="emp in exportMatches" :key="emp.employee_id" class="text-sm text-ink-700 py-0.5">
+              {{ emp.employee_name }}
+              <span class="text-xs text-ink-400">· {{ emp.pay_method }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-100">
+          <button type="button" @click="closeExportModal"
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="button" @click="exportExcel(exportFreq, exportPayMethod)"
+            :disabled="exportMatches.length === 0"
+            class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed">
+            Export
+          </button>
+        </div>
       </div>
     </div>
 
