@@ -398,13 +398,12 @@ function pickPeriod(half) {
 function changePeriod(fn) { fn(); loadTotals(); }
 
 async function exportExcel() {
-  const runNumber = window.prompt("Run Number for this payroll?");
-  if (runNumber === null) return; // cancelled
+  // No Run Number prompt: the header cell is left blank on the sheet for the
+  // client to fill in, like Check Date and Run Date.
   try {
     const params = new URLSearchParams({
       period_start: start.value,
       period_end: end.value,
-      run_number: runNumber,
       frequency: freqView.value,
       pay_method: payFilter.value,
     });
