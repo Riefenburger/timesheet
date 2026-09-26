@@ -51,15 +51,19 @@ async function loadEmployees() {
 function resetForm() {
   form.name = ""; form.employee_number = ""; form.email = "";
   form.role = "user"; form.pay_method = "payroll"; form.pay_frequency = "bimonthly"; form.is_salaried = false; form.salary = null;
+  form._hasAccount = false;
 }
 function openAdd() {
   editingId.value = null;
+  resetModalState();
   resetForm();
   rates.value = [];
-  modalError.value = null;
   showModal.value = true;
 }
 async function openEdit(emp) {
+  // Clear first, then fill from this employee — otherwise the reset would
+  // clobber the values assigned below.
+  resetModalState();
   editingId.value = emp.id;
   form.name = emp.name;
   form.employee_number = emp.employee_number ?? "";
@@ -70,14 +74,12 @@ async function openEdit(emp) {
   form.is_salaried = emp.is_salaried;
   form.salary = emp.salary;
   form._hasAccount = emp.has_account;
-  modalError.value = null;
   showModal.value = true;
   await loadRates(emp.id);
 }
 function closeModal() {
   showModal.value = false;
-  modalError.value = null;
-  rateError.value = null;
+  resetModalState();
 }
 
 async function saveEmployee() {
@@ -311,6 +313,25 @@ function openPrivateAdd() {
     newPrivate[m] = existing ? Number(existing.amount) : globalRateFor(m);
   }
   showPrivateAdd.value = true;
+}
+
+// ---- Employee modal state reset ----
+// The modal's markup is conditional (v-if="showModal") but its state lives in
+// this page's scope, which stays mounted — so nothing clears itself on close.
+// Every ref that belongs to "the employee currently in the modal" must be reset
+// here, and this must be called on both open and close. Add new modal state to
+// this function too, or it will leak across employees.
+// Declared after the refs it touches (hoisted, so the openers above can call it).
+function resetModalState() {
+  modalError.value = null;
+  rateError.value = null;
+  inviteLink.value = null;
+  inviteError.value = null;
+  inviteCopied.value = false;
+  confirmReset.value = false;
+  showPrivateAdd.value = false;
+  newRate.label = ""; newRate.amount = null;
+  for (const k of Object.keys(newPrivate)) newPrivate[k] = null;
 }
 
 // ---- Global category management modal ----
