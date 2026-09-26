@@ -62,7 +62,7 @@ function openAdd() {
 async function openEdit(emp) {
   editingId.value = emp.id;
   form.name = emp.name;
-  form.employee_number = emp.employee_number;
+  form.employee_number = emp.employee_number ?? "";
   form.email = emp.email ?? "";
   form.role = emp.role;
   form.pay_method = emp.pay_method;
@@ -86,18 +86,21 @@ async function saveEmployee() {
     modalError.value = "Salaried employees need a salary amount.";
     return;
   }
-  const body = {
-    name: form.name,
-    employee_number: form.employee_number.trim() === "" ? null : form.employee_number.trim(),
-    email: form.email.trim() === "" ? null : form.email.trim(),
-    role: form.role,
-    pay_method: form.pay_method,
-    pay_frequency: form.pay_frequency,
-    is_salaried: form.is_salaried,
-    salary: form.is_salaried ? Number(form.salary) : null,
-  };
   saving.value = true;
   try {
+    // Nullable fields can come back from the API as null, so normalize before trimming.
+    const employeeNumber = (form.employee_number ?? "").trim();
+    const email = (form.email ?? "").trim();
+    const body = {
+      name: form.name,
+      employee_number: employeeNumber === "" ? null : employeeNumber,
+      email: email === "" ? null : email,
+      role: form.role,
+      pay_method: form.pay_method,
+      pay_frequency: form.pay_frequency,
+      is_salaried: form.is_salaried,
+      salary: form.is_salaried ? Number(form.salary) : null,
+    };
     if (editingId.value === null) {
       // Create → capture the new id and switch into edit mode so rates can be added.
       const created = await $fetch("/api/admin/employees", { method: "POST", body });
@@ -112,7 +115,14 @@ async function saveEmployee() {
       await loadEmployees();
     }
   } catch (e) {
-    modalError.value = (e && e.data) ? String(e.data) : "Could not save. Check the fields and try again.";
+    if (e && e.data) {
+      modalError.value = String(e.data);
+    } else {
+      // Not an API error (e.g. a bug in the code above) — surface it instead of
+      // leaving the Save button looking inert.
+      console.error("saveEmployee failed:", e);
+      modalError.value = "Could not save. Check the fields and try again.";
+    }
   } finally {
     saving.value = false;
   }
