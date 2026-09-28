@@ -553,6 +553,8 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
               <tr class="bg-white">
                 <td class="px-3 py-3 text-ink-900 font-medium whitespace-nowrap">
                   {{ emp.employee_name }}
+                  <span v-if="emp.is_active === false"
+                    class="ml-1 text-xs rounded px-1.5 py-0.5 bg-slate-200 text-ink-500">inactive</span>
                   <span class="text-ink-400 font-normal">#{{ emp.employee_number }}</span>
                   <span class="ml-1 text-xs text-ink-400 capitalize">({{ emp.pay_method }})</span>
                 </td>
@@ -831,6 +833,8 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
             <div v-for="emp in exportMatches" :key="emp.employee_id" class="text-sm text-ink-700 py-0.5">
               {{ emp.employee_name }}
               <span class="text-xs text-ink-400">· {{ emp.pay_method }}</span>
+              <span v-if="emp.is_active === false"
+                class="text-xs rounded px-1.5 py-0.5 bg-slate-200 text-ink-500">inactive</span>
             </div>
           </div>
         </div>

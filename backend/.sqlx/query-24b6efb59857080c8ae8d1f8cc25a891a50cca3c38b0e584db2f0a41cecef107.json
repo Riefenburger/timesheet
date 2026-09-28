@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        FROM employees\n        ORDER BY name\n        ",
+  "query": "\n        UPDATE employees SET is_active = $1\n        WHERE id = $2\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -121,6 +121,17 @@
       },
       {
         "ordinal": 11,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -132,7 +143,10 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Bool",
+        "Int8"
+      ]
     },
     "nullable": [
       false,
@@ -146,8 +160,9 @@
       false,
       true,
       null,
+      false,
       false
     ]
   },
-  "hash": "b98651729df530bea68bc17273c26caae0989fe21383d6c41c4c41d95080bf30"
+  "hash": "24b6efb59857080c8ae8d1f8cc25a891a50cca3c38b0e584db2f0a41cecef107"
 }

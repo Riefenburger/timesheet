@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, pay_frequency, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            created_at\n        ",
+  "query": "\n        SELECT\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        FROM employees\n        ORDER BY name\n        ",
   "describe": {
     "columns": [
       {
@@ -121,6 +121,17 @@
       },
       {
         "ordinal": 11,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -132,16 +143,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Bool",
-        "Numeric"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -155,8 +157,9 @@
       false,
       true,
       null,
+      false,
       false
     ]
   },
-  "hash": "b7ee36d15e9fe971eed8d00f0e4458b43809dace4bc6a009e921292e9c2f82c1"
+  "hash": "5c3176fde4e02cc77aac01c146dd14ea20cfc05bc6a0adcf90e25efcb4154850"
 }

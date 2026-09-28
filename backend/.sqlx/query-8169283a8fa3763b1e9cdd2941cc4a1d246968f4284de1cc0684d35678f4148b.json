@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT e.name, e.email\n        FROM invites i\n        JOIN employees e ON e.id = i.employee_id\n        WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()\n        ",
+  "query": "\n        SELECT e.name, e.email\n        FROM invites i\n        JOIN employees e ON e.id = i.employee_id\n        WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()\n          AND e.is_active = true\n        ",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       true
     ]
   },
-  "hash": "f88f806ea3ed04f01b0c005a7cc98c818e4992a712156ea4a85394c194449e88"
+  "hash": "8169283a8fa3763b1e9cdd2941cc4a1d246968f4284de1cc0684d35678f4148b"
 }

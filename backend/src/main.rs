@@ -32,7 +32,9 @@ async fn main() {
         .route("/entries", get(entries::list_entries).post(entries::create_entry))
         .route("/admin/entries", get(entries::list_all_entries).post(entries::admin_create_entry))
         .route("/admin/entries/{id}", axum::routing::put(entries::admin_edit_entry).delete(entries::admin_delete_entry))
-        .route("/admin/employees/{id}", put(employees::update_employee))
+        // Combined: Axum 0.8 panics on a duplicate method+path registration.
+        .route("/admin/employees/{id}", put(employees::update_employee).delete(employees::delete_employee))
+        .route("/admin/employees/{id}/active", put(employees::set_employee_active))
         .route("/admin/employees/{id}/entries", get(entries::list_employee_entries))
         .route("/admin/employees/{id}/rates", get(rates::list_rates))
         .route("/admin/rates", post(rates::create_rate))

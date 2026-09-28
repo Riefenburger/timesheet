@@ -449,6 +449,8 @@ onMounted(() => { loadTotals(); loadCategoryList(); loadDurations(); });
               <tr class="bg-white">
                 <td class="px-3 py-3 text-ink-900 font-medium whitespace-nowrap">
                   {{ emp.employee_name }}
+                  <span v-if="emp.is_active === false"
+                    class="ml-1 text-xs rounded px-1.5 py-0.5 bg-slate-200 text-ink-500">inactive</span>
                   <span class="text-ink-400 font-normal">#{{ emp.employee_number }}</span>
                 </td>
                 <td class="px-3 py-3 text-right text-ink-900">{{ (sumField(emp, "regular_hours") + privateHours(emp)).toFixed(2) }}</td>

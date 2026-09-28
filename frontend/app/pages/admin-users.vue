@@ -24,6 +24,54 @@ const rates = ref([]);
 const ratesLoading = ref(false);
 const rateError = ref(null);
 
+// --- Active / inactive ---
+const showInactive = ref(false);
+const activeEmployees = computed(() =>
+  showInactive.value ? employees.value : employees.value.filter((e) => e.is_active));
+const inactiveCount = computed(() => employees.value.filter((e) => !e.is_active).length);
+
+const confirmDeactivate = ref(false);
+const confirmDelete = ref(false);
+const settingActive = ref(false);
+const deletingEmployee = ref(false);
+// The employee currently open in the modal, for its active state + delete copy.
+const editingEmployee = computed(() =>
+  employees.value.find((e) => e.id === editingId.value) ?? null);
+const editingIsActive = computed(() => editingEmployee.value?.is_active ?? true);
+
+async function setActive(isActive) {
+  modalError.value = null;
+  settingActive.value = true;
+  try {
+    await $fetch(`/api/admin/employees/${editingId.value}/active`, {
+      method: "PUT",
+      body: { is_active: isActive },
+    });
+    confirmDeactivate.value = false;
+    await loadEmployees();
+  } catch (e) {
+    modalError.value = (e && e.data) ? String(e.data)
+      : "Could not change this employee's status.";
+  } finally {
+    settingActive.value = false;
+  }
+}
+
+async function deleteEmployee() {
+  modalError.value = null;
+  deletingEmployee.value = true;
+  try {
+    await $fetch(`/api/admin/employees/${editingId.value}`, { method: "DELETE" });
+    closeModal();
+    await loadEmployees();
+  } catch (e) {
+    // The backend refuses with a 409 listing what history exists — show it as-is.
+    modalError.value = (e && e.data) ? String(e.data) : "Could not delete this employee.";
+  } finally {
+    deletingEmployee.value = false;
+  }
+}
+
 // Dynamic private duration tiers (fetched from the backend).
 const durations = ref([]); // [{ id, duration_minutes, global_rate }]
 const durationMinutes = computed(() => durations.value.map((d) => d.duration_minutes));
@@ -329,6 +377,10 @@ function resetModalState() {
   inviteError.value = null;
   inviteCopied.value = false;
   confirmReset.value = false;
+  // An armed "Delete permanently" leaking onto the next employee opened is the
+  // worst version of the state-leak bug this function exists to prevent.
+  confirmDeactivate.value = false;
+  confirmDelete.value = false;
   showPrivateAdd.value = false;
   newRate.label = ""; newRate.amount = null;
   for (const k of Object.keys(newPrivate)) newPrivate[k] = null;
@@ -438,6 +490,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-ink-900">Manage Employees</h1>
         <div class="flex items-center gap-3">
+          <label v-if="inactiveCount > 0" class="flex items-center gap-2 text-sm text-ink-500">
+            <input v-model="showInactive" type="checkbox" class="rounded" />
+            Show inactive ({{ inactiveCount }})
+          </label>
           <button @click="openCatModal"
             class="bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-600">
             + Category
@@ -464,8 +520,13 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-for="emp in employees" :key="emp.id" class="group">
-              <td class="px-4 py-3 text-ink-900">{{ emp.name }}</td>
+            <tr v-for="emp in activeEmployees" :key="emp.id" class="group"
+              :class="emp.is_active ? '' : 'bg-slate-50/60'">
+              <td class="px-4 py-3" :class="emp.is_active ? 'text-ink-900' : 'text-ink-400'">
+                {{ emp.name }}
+                <span v-if="!emp.is_active"
+                  class="ml-2 text-xs rounded px-1.5 py-0.5 bg-slate-200 text-ink-500">Inactive</span>
+              </td>
               <td class="px-4 py-3 text-ink-700">{{ emp.employee_number }}</td>
               <td class="px-4 py-3 text-ink-700">{{ roleLabel(emp.role) }}</td>
               <td class="px-4 py-3 text-ink-700 capitalize">{{ emp.pay_method }}</td>
@@ -494,6 +555,12 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
         <h2 class="text-lg font-semibold text-ink-900 mb-4">
           {{ editingId === null ? "Add Employee" : "Edit Employee" }}
         </h2>
+        <div v-if="editingId !== null && !editingIsActive"
+          class="mb-4 p-3 rounded-lg bg-slate-100 border border-slate-200 text-sm text-ink-600">
+          <span class="font-medium">Inactive.</span>
+          Hidden from active lists and payroll runs, and signed out of the portal.
+          Their entries and rates are kept.
+        </div>
         <!-- Account status / invite (edit mode only) -->
         <div v-if="editingId !== null" class="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-100">
           <div v-if="form._hasAccount" class="flex items-center justify-between">
@@ -663,6 +730,63 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           </template>
         </div>
         <!-- (Categories & Rates section ends here) -->
+
+        <!-- Employment status: deactivate is the primary retire action; delete is
+             destructive and visually separated from it. -->
+        <div v-if="editingId !== null" class="mt-6 pt-5 border-t border-slate-100">
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">Employment status</h3>
+
+          <div v-if="editingIsActive">
+            <template v-if="confirmDeactivate">
+              <p class="text-sm text-ink-700 mb-2">
+                Deactivate <span class="font-medium">{{ form.name }}</span>? They'll be hidden
+                from the employee list and left out of payroll runs, and they'll lose portal
+                access. All of their entries and rates are kept, and you can reactivate them
+                at any time.
+              </p>
+              <div class="flex gap-2">
+                <button type="button" @click="setActive(false)" :disabled="settingActive"
+                  class="text-sm bg-amber-500 text-white rounded-lg px-3 py-2 font-medium hover:bg-amber-600 disabled:opacity-50">
+                  {{ settingActive ? "Deactivating…" : "Yes, deactivate" }}
+                </button>
+                <button type="button" @click="confirmDeactivate = false"
+                  class="text-sm text-ink-500 hover:text-ink-900 px-3 py-2">Cancel</button>
+              </div>
+            </template>
+            <button v-else type="button" @click="confirmDeactivate = true"
+              class="text-sm bg-amber-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-amber-600">
+              Deactivate employee
+            </button>
+          </div>
+
+          <button v-else type="button" @click="setActive(true)" :disabled="settingActive"
+            class="text-sm bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {{ settingActive ? "Reactivating…" : "Reactivate employee" }}
+          </button>
+
+          <div class="mt-4 pt-4 border-t border-dashed border-red-200">
+            <template v-if="confirmDelete">
+              <p class="text-sm text-red-700 mb-2">
+                Permanently delete <span class="font-medium">{{ form.name }}</span>? This
+                removes the employee, their rates, any invites and their login. It cannot be
+                undone. If they have any payroll history this will be refused — deactivate
+                them instead.
+              </p>
+              <div class="flex gap-2">
+                <button type="button" @click="deleteEmployee" :disabled="deletingEmployee"
+                  class="text-sm bg-red-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-red-700 disabled:opacity-50">
+                  {{ deletingEmployee ? "Deleting…" : "Yes, delete permanently" }}
+                </button>
+                <button type="button" @click="confirmDelete = false"
+                  class="text-sm text-ink-500 hover:text-ink-900 px-3 py-2">Cancel</button>
+              </div>
+            </template>
+            <button v-else type="button" @click="confirmDelete = true"
+              class="text-xs text-red-500 hover:text-red-700">
+              Delete permanently…
+            </button>
+          </div>
+        </div>
 
         <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-100">
           <button type="button" @click="closeModal"

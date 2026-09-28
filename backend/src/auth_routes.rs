@@ -44,14 +44,19 @@ pub async fn create_invite(
     _super: SuperAdminEmployee,
     Json(payload): Json<InviteInput>,
 ) -> Result<Json<InviteResponse>, (StatusCode, String)> {
-    // Confirm the employee exists.
-    let exists = sqlx::query_scalar!(
-        "SELECT id FROM employees WHERE id = $1", payload.employee_id
+    // Confirm the employee exists and can still be given portal access.
+    let employee = sqlx::query!(
+        "SELECT id, is_active FROM employees WHERE id = $1", payload.employee_id
     )
     .fetch_optional(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if exists.is_none() {
-        return Err((StatusCode::NOT_FOUND, "Employee not found.".to_string()));
+    match employee {
+        None => return Err((StatusCode::NOT_FOUND, "Employee not found.".to_string())),
+        Some(e) if !e.is_active => return Err((
+            StatusCode::BAD_REQUEST,
+            "This employee is deactivated. Reactivate them before sending an invite.".to_string(),
+        )),
+        Some(_) => {}
     }
 
     let token = generate_token();
@@ -83,6 +88,7 @@ pub async fn check_invite(
         FROM invites i
         JOIN employees e ON e.id = i.employee_id
         WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()
+          AND e.is_active = true
         "#,
         token
     )
@@ -116,7 +122,9 @@ pub async fn signup(
         r#"
         SELECT i.employee_id
         FROM invites i
+        JOIN employees e ON e.id = i.employee_id
         WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()
+          AND e.is_active = true
         "#,
         payload.token
     )
@@ -179,7 +187,7 @@ pub async fn login(
 
     // Look up the employee by email, with their hash.
     let row = sqlx::query!(
-        "SELECT id, password_hash FROM employees WHERE lower(email) = $1",
+        "SELECT id, password_hash, is_active FROM employees WHERE lower(email) = $1",
         email
     )
     .fetch_optional(&pool)
@@ -188,9 +196,9 @@ pub async fn login(
 
     // Generic error whether the email is unknown or the password is wrong —
     // don't reveal which (avoids leaking who has an account).
-    let (employee_id, hash) = match row {
+    let (employee_id, hash, is_active) = match row {
         Some(r) => match r.password_hash {
-            Some(h) => (r.id, h),
+            Some(h) => (r.id, h, r.is_active),
             None => return Err((StatusCode::UNAUTHORIZED, "Invalid email or password.".to_string())),
         },
         None => return Err((StatusCode::UNAUTHORIZED, "Invalid email or password.".to_string())),
@@ -198,6 +206,17 @@ pub async fn login(
 
     if !verify_password(&payload.password, &hash) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid email or password.".to_string()));
+    }
+
+    // Checked AFTER the password, on purpose. Telling an unauthenticated caller
+    // that an address belongs to a deactivated account would leak who has one;
+    // this way only the person who actually knows the password learns why they
+    // are being turned away, and everyone else still gets the generic error.
+    if !is_active {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "This account is no longer active — contact your administrator.".to_string(),
+        ));
     }
 
     // Create the session.

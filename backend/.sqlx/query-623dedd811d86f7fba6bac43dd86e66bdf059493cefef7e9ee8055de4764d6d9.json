@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, employee_number, pay_method, pay_frequency FROM employees ORDER BY name",
+  "query": "SELECT id, name, employee_number, pay_method, pay_frequency, is_active FROM employees ORDER BY name",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,17 @@
             "name": "pay_frequency"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "is_active"
+          }
+        }
       }
     ],
     "parameters": {
@@ -67,8 +78,9 @@
       false,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "889ac5cedfb07f78575b1fea9601d2adb2694613140ab1d4647040bb50e40397"
+  "hash": "623dedd811d86f7fba6bac43dd86e66bdf059493cefef7e9ee8055de4764d6d9"
 }

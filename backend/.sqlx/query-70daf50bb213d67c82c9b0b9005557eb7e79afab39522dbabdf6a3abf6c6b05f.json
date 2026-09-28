@@ -1,0 +1,37 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            (SELECT COUNT(*) FROM time_entries         WHERE employee_id = $1) AS \"entries!\",\n            (SELECT COUNT(*) FROM category_hours       WHERE employee_id = $1) AS \"typed_totals!\",\n            (SELECT COUNT(*) FROM period_dollar_totals WHERE employee_id = $1) AS \"dollar_totals!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entries!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "typed_totals!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "dollar_totals!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "70daf50bb213d67c82c9b0b9005557eb7e79afab39522dbabdf6a3abf6c6b05f"
+}

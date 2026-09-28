@@ -24,8 +24,16 @@ where
         if let Some(cookie) = jar.get("session") {
             let token = cookie.value();
             let pool = PgPool::from_ref(state);
+            // Deactivated employees have no portal access. Sessions are deleted
+            // when someone is deactivated, so this is the belt-and-braces check:
+            // a cookie must never outlive deactivation even if that delete failed.
             let row = sqlx::query!(
-                "SELECT employee_id FROM sessions WHERE token = $1 AND expires_at > now()",
+                r#"
+                SELECT s.employee_id
+                FROM sessions s
+                JOIN employees e ON e.id = s.employee_id
+                WHERE s.token = $1 AND s.expires_at > now() AND e.is_active = true
+                "#,
                 token
             )
             .fetch_optional(&pool)

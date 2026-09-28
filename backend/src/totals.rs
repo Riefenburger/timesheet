@@ -355,6 +355,7 @@ pub struct EmployeeTotals {
     pub employee_number: String,
     pub pay_method: String,
     pub pay_frequency: String,
+    pub is_active: bool,
     pub categories: Vec<CategoryRow>,
     pub private_sessions: Vec<PrivateRow>,
     #[serde(with = "rust_decimal::serde::float")]
@@ -391,7 +392,7 @@ pub async fn compute_totals(
 ) -> Result<Vec<EmployeeTotals>, (StatusCode, String)> {
     // All employees.
     let employees = sqlx::query!(
-        r#"SELECT id, name, employee_number, pay_method, pay_frequency FROM employees ORDER BY name"#
+        r#"SELECT id, name, employee_number, pay_method, pay_frequency, is_active FROM employees ORDER BY name"#
     ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     // Stored (admin_edited) normal category rows.
@@ -580,12 +581,30 @@ pub async fn compute_totals(
         let lump = lump_dollars.get(&emp.id).copied().unwrap_or(Decimal::ZERO);
         let (priv_reg, priv_ot) = computed.get("private").copied()
             .unwrap_or((Decimal::ZERO, Decimal::ZERO));
+        // Deactivated employees drop off payroll runs — but ONLY when they have
+        // nothing in this period. Hiding an inactive employee who still has hours
+        // would silently not pay someone (quit mid-period, deactivated the same
+        // day), and would make past periods irreproducible, since a re-run of an
+        // old export would come out missing people it originally paid. So they
+        // stay visible whenever there is anything to pay, badged inactive.
+        if !emp.is_active
+            && categories.is_empty()
+            && private_sessions.is_empty()
+            && lump_rows.get(&emp.id).map_or(true, |r| r.is_empty())
+            && other == Decimal::ZERO
+            && competition == Decimal::ZERO
+            && coaching == Decimal::ZERO
+        {
+            continue;
+        }
+
         result.push(EmployeeTotals {
             employee_id: emp.id,
             employee_name: emp.name.clone(),
             employee_number: emp.employee_number.clone().unwrap_or_default(),
             pay_method: emp.pay_method.clone(),
             pay_frequency: emp.pay_frequency.clone(),
+            is_active: emp.is_active,
             categories,
             private_sessions,
             other_earn: other, competition_earn: competition, coaching_earn: coaching,

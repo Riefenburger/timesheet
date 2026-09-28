@@ -332,7 +332,13 @@ pub async fn export_totals(
 
         // Column A: name + Emp# + the first row's rate share one wrapped cell.
         let mut head = vec![
-            emp.employee_name.clone(),
+            if emp.is_active {
+                emp.employee_name.clone()
+            } else {
+                // Only inactive employees who still have hours/sessions in this
+                // period reach the sheet at all — flag them so payroll knows.
+                format!("{} (inactive)", emp.employee_name)
+            },
             format!("Emp#: {}", emp.employee_number),
         ];
         if !block[0].label.is_empty() { head.push(block[0].label.clone()); }
