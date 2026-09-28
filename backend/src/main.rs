@@ -38,6 +38,9 @@ async fn main() {
         .route("/admin/rates", post(rates::create_rate))
         .route("/admin/rates/{id}", put(rates::update_rate).delete(rates::delete_rate))
         .route("/entries/categories", get(entries::my_categories))
+        // Personal edit/delete of your own entries. Sits beside the static
+        // /entries/categories route above, which the matcher prefers.
+        .route("/entries/{id}", put(entries::update_my_entry).delete(entries::delete_my_entry))
         .route("/admin/totals", get(totals::list_totals))
         .route("/categories", get(categories::list_categories))
         .route("/admin/categories", post(categories::create_category))

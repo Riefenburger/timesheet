@@ -20,11 +20,35 @@ const privateDurations = ref([]);
 const isPrivate = computed(() => form.category === "private");
 const isLumpSum = computed(() => lumpSumCategories.value.includes(form.category));
 
+// --- Edit mode ---
+const editingId = ref(null);
+const formEl = ref(null);
+// An entry can hold a category (or private duration) the employee no longer has a
+// rate for. Those aren't in the pickers, so they're injected while editing that
+// entry — otherwise the select would show blank and silently lose the value.
+const extraCategory = ref(null);
+const extraDuration = ref(null);
+const categoryOptions = computed(() => {
+  const list = [...myCategories.value];
+  if (extraCategory.value && !list.includes(extraCategory.value)) list.push(extraCategory.value);
+  return list;
+});
+const durationOptions = computed(() => {
+  const list = [...privateDurations.value];
+  if (extraDuration.value !== null && !list.includes(extraDuration.value)) {
+    list.push(extraDuration.value);
+    list.sort((a, b) => a - b);
+  }
+  return list;
+});
+
 const { start, end } = usePayPeriod();
 
 async function loadEntries() {
   loading.value = true;
   error.value = null;
+  // Never leave a delete armed on a row that's about to be re-rendered.
+  confirmDeleteId.value = null;
   try {
     entries.value = await $fetch("/api/entries", {
       query: { period_start: start.value, period_end: end.value },
@@ -65,9 +89,12 @@ function resetForm() {
   form.category = null;
   form.session_duration = null;
   form.session_count = null;
+  editingId.value = null;
+  extraCategory.value = null;
+  extraDuration.value = null;
 }
 
-async function addEntry() {
+async function submitEntry() {
   error.value = null;
   const body = {
     entry_date: form.entry_date,
@@ -80,15 +107,75 @@ async function addEntry() {
     session_count: isPrivate.value ? form.session_count : null,
   };
   try {
-    await $fetch("/api/entries", { method: "POST", body });
+    if (editingId.value === null) {
+      await $fetch("/api/entries", { method: "POST", body });
+    } else {
+      await $fetch(`/api/entries/${editingId.value}`, { method: "PUT", body });
+    }
     resetForm();
     await loadEntries();
   } catch (e) {
-    error.value = "Could not save the entry — check the fields and try again.";
+    error.value = editingId.value === null
+      ? "Could not save the entry — check the fields and try again."
+      : "Could not update the entry — check the fields and try again.";
+  }
+}
+
+// Load an entry back into the form. Set while populating so the category watcher
+// below doesn't wipe the values we just assigned: that watcher flushes on the
+// next tick, so a plain assignment would be cleared a moment later.
+let populating = false;
+
+async function startEdit(entry) {
+  error.value = null;
+  confirmDeleteId.value = null;
+  populating = true;
+  editingId.value = entry.id;
+  // Keep a category/duration the employee no longer has a rate for selectable.
+  extraCategory.value = entry.category && !myCategories.value.includes(entry.category)
+    && entry.category !== "private" ? entry.category : null;
+  extraDuration.value = entry.session_duration !== null
+    && !privateDurations.value.includes(entry.session_duration) ? entry.session_duration : null;
+  form.entry_date = entry.entry_date;
+  form.class_name = entry.class_name;
+  form.teacher_room = entry.teacher_room;
+  form.category = entry.category;
+  // Private hours are derived from duration × count, so leave hours empty there.
+  form.hours = entry.session_duration ? null : Number(entry.hours);
+  form.session_duration = entry.session_duration;
+  form.session_count = entry.session_count;
+  await nextTick();          // the watcher has flushed by now
+  populating = false;
+  formEl.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEdit() {
+  resetForm();
+  error.value = null;
+}
+
+// ---- Delete, with an inline two-step confirm ----
+const confirmDeleteId = ref(null);
+const deleting = ref(false);
+
+async function deleteEntry(entry) {
+  error.value = null;
+  deleting.value = true;
+  try {
+    await $fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
+    // Deleting the entry being edited would leave the form pointing at nothing.
+    if (editingId.value === entry.id) resetForm();
+    confirmDeleteId.value = null;
+    await loadEntries();
+  } catch (e) {
+    error.value = "Could not delete the entry.";
+  } finally {
+    deleting.value = false;
   }
 }
 
 watch(() => form.category, () => {
+  if (populating) return;     // only clear on a real user change
   form.hours = null;
   form.session_duration = null;
   form.session_count = null;
@@ -109,8 +196,13 @@ onMounted(() => {
         <span v-if="user" class="text-base font-normal text-ink-400">— {{ user.name }}</span>
       </h1>
 
-      <form @submit.prevent="addEntry" class="bg-white rounded-2xl shadow p-4 sm:p-6 mb-8">
+      <form ref="formEl" @submit.prevent="submitEntry" class="bg-white rounded-2xl shadow p-4 sm:p-6 mb-8">
         <fieldset class="space-y-4">
+          <div v-if="editingId !== null" class="flex items-center justify-between gap-2 -mt-1">
+            <h2 class="text-sm font-semibold text-indigo-600">Editing entry</h2>
+            <button type="button" @click="cancelEdit"
+              class="text-xs text-ink-400 hover:text-ink-700 px-2 py-1">Cancel</button>
+          </div>
           <div class="flex flex-col sm:flex-row gap-4">
             <div v-if="!isLumpSum" class="flex-1">
               <label class="block text-sm font-medium text-ink-700 mb-1">Class Name &amp; Time</label>
@@ -135,8 +227,8 @@ onMounted(() => {
               <select v-model="form.category" required
                 class="w-full rounded-lg border border-slate-300 px-3 py-2 capitalize">
                 <option :value="null" disabled>Select a role…</option>
-                <option v-for="c in myCategories" :key="c" :value="c" class="capitalize">{{ c }}</option>
-                <option v-if="privateDurations.length" value="private">private</option>
+                <option v-for="c in categoryOptions" :key="c" :value="c" class="capitalize">{{ c }}</option>
+                <option v-if="privateDurations.length || extraDuration !== null" value="private">private</option>
               </select>
             </div>
             <div v-if="!isPrivate && !isLumpSum" class="w-full sm:w-28">
@@ -150,7 +242,7 @@ onMounted(() => {
                 <select v-model.number="form.session_duration" :required="isPrivate"
                   class="w-full rounded-lg border border-slate-300 px-3 py-2">
                   <option :value="null" disabled>Length…</option>
-                  <option v-for="d in privateDurations" :key="d" :value="d">{{ d }} min</option>
+                  <option v-for="d in durationOptions" :key="d" :value="d">{{ d }} min</option>
                 </select>
               </div>
               <div class="w-full sm:w-28">
@@ -161,10 +253,16 @@ onMounted(() => {
             </template>
           </div>
 
-          <button type="submit"
-            class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
-            Add entry
-          </button>
+          <div class="flex gap-3">
+            <button type="submit"
+              class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
+              {{ editingId === null ? "Add entry" : "Save changes" }}
+            </button>
+            <button v-if="editingId !== null" type="button" @click="cancelEdit"
+              class="rounded-lg border border-slate-300 px-4 py-2 font-medium text-ink-700 hover:bg-slate-50">
+              Cancel
+            </button>
+          </div>
         </fieldset>
       </form>
 
@@ -175,7 +273,8 @@ onMounted(() => {
         <p v-if="loading" class="text-ink-400">Loading…</p>
         <p v-else-if="entries.length === 0" class="text-ink-400">No entries yet.</p>
         <ul v-else class="divide-y divide-slate-100">
-          <li v-for="entry in entries" :key="entry.id" class="py-3">
+          <li v-for="entry in entries" :key="entry.id" class="py-3"
+            :class="editingId === entry.id ? 'bg-indigo-50/50 -mx-2 px-2 rounded-lg' : ''">
             <div class="flex justify-between gap-2 flex-wrap">
               <span class="font-medium text-ink-900">
                 {{ entry.class_name }}
@@ -191,6 +290,25 @@ onMounted(() => {
             <p v-if="entry.teacher_room" class="text-ink-700 text-sm mt-1">
               Room {{ entry.teacher_room }}
             </p>
+            <!-- Always visible, not hover-revealed: a hover-only control is
+                 unreachable on a phone. -->
+            <div class="flex justify-end items-center gap-1 mt-1">
+              <template v-if="confirmDeleteId === entry.id">
+                <span class="text-xs text-ink-500 mr-1">Delete this entry?</span>
+                <button type="button" @click="deleteEntry(entry)" :disabled="deleting"
+                  class="text-xs bg-red-500 text-white rounded px-2 py-1.5 hover:bg-red-600 disabled:opacity-50">
+                  {{ deleting ? "Deleting…" : "Yes, delete" }}
+                </button>
+                <button type="button" @click="confirmDeleteId = null"
+                  class="text-xs text-ink-400 hover:text-ink-700 px-2 py-1.5">Cancel</button>
+              </template>
+              <template v-else>
+                <button type="button" @click="startEdit(entry)"
+                  class="text-xs text-ink-500 hover:text-ink-900 px-2 py-1.5">Edit</button>
+                <button type="button" @click="confirmDeleteId = entry.id"
+                  class="text-xs text-ink-500 hover:text-red-600 px-2 py-1.5">Delete</button>
+              </template>
+            </div>
           </li>
         </ul>
       </div>

@@ -275,6 +275,94 @@ pub async fn create_entry(
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
+// The personal "My Time" edit payload. Deliberately has NO employee_id (ownership
+// comes from the session, never from the request) and no `type` (a user must not
+// be able to turn their entry into a sick entry, or vice versa).
+#[derive(Deserialize)]
+pub struct MyEditEntry {
+    entry_date: NaiveDate,
+    class_name: String,
+    teacher_room: String,
+    details: String,
+    #[serde(with = "rust_decimal::serde::float")]
+    hours: Decimal,
+    category: Option<String>,
+    #[serde(default)]
+    session_duration: Option<i32>,
+    #[serde(default)]
+    session_count: Option<i32>,
+}
+
+// PUT /entries/:id — edit one of your OWN entries. Any signed-in employee.
+// Separate from admin_edit_entry, which may touch anyone's entry and their type.
+pub async fn update_my_entry(
+    State(pool): State<PgPool>,
+    current: CurrentEmployee,
+    Path(entry_id): Path<i64>,
+    Json(payload): Json<MyEditEntry>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let (hours, duration, count) = resolve_hours(
+        payload.hours, payload.session_duration, payload.session_count,
+    ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(dur) = duration {
+        validate_duration(&pool, dur).await?;
+    }
+
+    // Ownership is enforced inside the statement: employee_id comes from the
+    // session extractor, so there is no code path that updates without it.
+    // `type` is left out of the SET clause on purpose.
+    let result = sqlx::query!(
+        r#"
+        UPDATE time_entries
+        SET entry_date = $1, class_name = $2, teacher_room = $3, details = $4,
+            hours = $5, category = $6, session_duration = $7, session_count = $8
+        WHERE id = $9 AND employee_id = $10
+        "#,
+        payload.entry_date,
+        payload.class_name,
+        payload.teacher_room,
+        payload.details,
+        hours,
+        payload.category,
+        duration,
+        count,
+        entry_id,
+        current.id,
+    )
+    .execute(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Someone else's entry and a nonexistent one both return 404: a 403 would
+    // confirm the row exists and let entry ids be enumerated.
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// DELETE /entries/:id — remove one of your OWN entries. Any signed-in employee.
+pub async fn delete_my_entry(
+    State(pool): State<PgPool>,
+    current: CurrentEmployee,
+    Path(entry_id): Path<i64>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Same ownership predicate, same uniform 404 as update_my_entry.
+    let result = sqlx::query!(
+        "DELETE FROM time_entries WHERE id = $1 AND employee_id = $2",
+        entry_id,
+        current.id,
+    )
+    .execute(&pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Deserialize)]
 pub struct MyEntriesQuery {
     period_start: Option<NaiveDate>,

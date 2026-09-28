@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE time_entries\n        SET entry_date = $1, class_name = $2, teacher_room = $3, details = $4,\n            hours = $5, category = $6, session_duration = $7, session_count = $8\n        WHERE id = $9 AND employee_id = $10\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Text",
+        "Text",
+        "Text",
+        "Numeric",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a2c37aedba9afb34dbd3ecedbebaf2dc6ea8606be7adb63d9e62416da2423293"
+}
