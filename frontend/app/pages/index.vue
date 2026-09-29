@@ -92,6 +92,8 @@ function resetForm() {
   editingId.value = null;
   extraCategory.value = null;
   extraDuration.value = null;
+  // Delete lives in the edit controls now, so leaving edit mode must disarm it.
+  confirmDeleteId.value = null;
 }
 
 async function submitEntry() {
@@ -158,13 +160,13 @@ function cancelEdit() {
 const confirmDeleteId = ref(null);
 const deleting = ref(false);
 
-async function deleteEntry(entry) {
+async function deleteEntry(id) {
   error.value = null;
   deleting.value = true;
   try {
-    await $fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
-    // Deleting the entry being edited would leave the form pointing at nothing.
-    if (editingId.value === entry.id) resetForm();
+    await $fetch(`/api/entries/${id}`, { method: "DELETE" });
+    // Deleting the entry being edited leaves the form pointing at nothing.
+    if (editingId.value === id) resetForm();
     confirmDeleteId.value = null;
     await loadEntries();
   } catch (e) {
@@ -253,15 +255,36 @@ onMounted(() => {
             </template>
           </div>
 
-          <div class="flex gap-3">
-            <button type="submit"
-              class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
-              {{ editingId === null ? "Add entry" : "Save changes" }}
-            </button>
-            <button v-if="editingId !== null" type="button" @click="cancelEdit"
-              class="rounded-lg border border-slate-300 px-4 py-2 font-medium text-ink-700 hover:bg-slate-50">
-              Cancel
-            </button>
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Two-step confirm replaces the controls, so Save can't be hit by
+                 accident while a delete is armed. -->
+            <template v-if="editingId !== null && confirmDeleteId === editingId">
+              <span class="text-sm text-ink-700 w-full sm:w-auto">Delete this entry?</span>
+              <button type="button" @click="deleteEntry(editingId)" :disabled="deleting"
+                class="bg-red-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-red-700 disabled:opacity-50">
+                {{ deleting ? "Deleting…" : "Yes, delete" }}
+              </button>
+              <button type="button" @click="confirmDeleteId = null"
+                class="rounded-lg border border-slate-300 px-4 py-2 font-medium text-ink-700 hover:bg-slate-50">
+                Cancel
+              </button>
+            </template>
+            <template v-else>
+              <button type="submit"
+                class="bg-slate-800 text-white rounded-lg px-4 py-2 font-medium hover:bg-slate-700">
+                {{ editingId === null ? "Add entry" : "Save changes" }}
+              </button>
+              <button v-if="editingId !== null" type="button" @click="cancelEdit"
+                class="rounded-lg border border-slate-300 px-4 py-2 font-medium text-ink-700 hover:bg-slate-50">
+                Cancel
+              </button>
+              <!-- Sits apart from Save/Cancel on a wide screen; wraps below them
+                   on a phone rather than crowding them. -->
+              <button v-if="editingId !== null" type="button" @click="confirmDeleteId = editingId"
+                class="sm:ml-auto rounded-lg border border-red-300 px-4 py-2 font-medium text-red-600 hover:bg-red-50">
+                Delete
+              </button>
+            </template>
           </div>
         </fieldset>
       </form>
@@ -275,39 +298,38 @@ onMounted(() => {
         <ul v-else class="divide-y divide-slate-100">
           <li v-for="entry in entries" :key="entry.id" class="py-3"
             :class="editingId === entry.id ? 'bg-indigo-50/50 -mx-2 px-2 rounded-lg' : ''">
-            <div class="flex justify-between gap-2 flex-wrap">
-              <span class="font-medium text-ink-900">
-                {{ entry.class_name }}
-                <span v-if="entry.session_duration" class="text-xs text-indigo-500 ml-1">
-                  ({{ entry.session_count }}× {{ entry.session_duration }}min private)
-                </span>
-                <span v-else-if="entry.category" class="text-xs text-ink-400 ml-1 capitalize">
-                  {{ entry.category }}
-                </span>
-              </span>
-              <span class="text-ink-500">{{ entry.entry_date }} · {{ entry.hours }}h</span>
-            </div>
-            <p v-if="entry.teacher_room" class="text-ink-700 text-sm mt-1">
-              Room {{ entry.teacher_room }}
-            </p>
-            <!-- Always visible, not hover-revealed: a hover-only control is
-                 unreachable on a phone. -->
-            <div class="flex justify-end items-center gap-1 mt-1">
-              <template v-if="confirmDeleteId === entry.id">
-                <span class="text-xs text-ink-500 mr-1">Delete this entry?</span>
-                <button type="button" @click="deleteEntry(entry)" :disabled="deleting"
-                  class="text-xs bg-red-500 text-white rounded px-2 py-1.5 hover:bg-red-600 disabled:opacity-50">
-                  {{ deleting ? "Deleting…" : "Yes, delete" }}
-                </button>
-                <button type="button" @click="confirmDeleteId = null"
-                  class="text-xs text-ink-400 hover:text-ink-700 px-2 py-1.5">Cancel</button>
-              </template>
-              <template v-else>
-                <button type="button" @click="startEdit(entry)"
-                  class="text-xs text-ink-500 hover:text-ink-900 px-2 py-1.5">Edit</button>
-                <button type="button" @click="confirmDeleteId = entry.id"
-                  class="text-xs text-ink-500 hover:text-red-600 px-2 py-1.5">Delete</button>
-              </template>
+            <div class="flex items-start gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between gap-2 flex-wrap">
+                  <span class="font-medium text-ink-900">
+                    {{ entry.class_name }}
+                    <span v-if="entry.session_duration" class="text-xs text-indigo-500 ml-1">
+                      ({{ entry.session_count }}× {{ entry.session_duration }}min private)
+                    </span>
+                    <span v-else-if="entry.category" class="text-xs text-ink-400 ml-1 capitalize">
+                      {{ entry.category }}
+                    </span>
+                  </span>
+                  <span class="text-ink-500">{{ entry.entry_date }} · {{ entry.hours }}h</span>
+                </div>
+                <p v-if="entry.teacher_room" class="text-ink-700 text-sm mt-1">
+                  Room {{ entry.teacher_room }}
+                </p>
+              </div>
+              <!-- Always visible, never hover-revealed: a hover-only control is
+                   unreachable on a phone. 40px box for the tap target. -->
+              <button type="button" @click="startEdit(entry)"
+                :aria-label="`Edit entry: ${entry.class_name || entry.category || entry.entry_date}`"
+                title="Edit entry"
+                class="shrink-0 w-10 h-10 -mr-2 flex items-center justify-center rounded-lg
+                       hover:bg-slate-100 touch-manipulation"
+                :class="editingId === entry.id ? 'text-indigo-600' : 'text-ink-400 hover:text-ink-900'">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
             </div>
           </li>
         </ul>
