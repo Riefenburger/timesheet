@@ -1,5 +1,6 @@
 mod auth;
 mod employees;
+mod names;
 mod entries;
 mod totals;
 mod rates;

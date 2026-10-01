@@ -4,10 +4,14 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use crate::auth::SuperAdminEmployee;
+use crate::names::roster_name;
 
 #[derive(Deserialize)]
 pub struct NewEmployee {
-    name: String,
+    first_name: String,
+    last_name: String,
+    #[serde(default)]
+    middle_initial: Option<String>,
     employee_number: Option<String>,
     email: Option<String>,
     role: String,
@@ -21,7 +25,14 @@ pub struct NewEmployee {
 #[derive(Serialize)]
 pub struct Employee {
     id: i64,
-    name: String,
+    // The pre-split single string. Kept until the back-fill is done, and shown in
+    // the edit modal as "Currently stored as" so an admin can split it by hand.
+    name: Option<String>,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    middle_initial: Option<String>,
+    // Roster format ("Last, MI First"), or the legacy string while unsplit.
+    display_name: String,
     employee_number: Option<String>,
     email: Option<String>,
     google_sub: Option<String>,
@@ -36,9 +47,85 @@ pub struct Employee {
     created_at: DateTime<Utc>,
 }
 
+// What the queries below select. Employee is built from it so display_name is
+// formatted in exactly one place.
+struct EmployeeRow {
+    id: i64,
+    name: Option<String>,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    middle_initial: Option<String>,
+    employee_number: Option<String>,
+    email: Option<String>,
+    google_sub: Option<String>,
+    role: String,
+    pay_method: String,
+    pay_frequency: String,
+    is_salaried: bool,
+    salary: Option<Decimal>,
+    has_account: bool,
+    is_active: bool,
+    created_at: DateTime<Utc>,
+}
+
+impl From<EmployeeRow> for Employee {
+    fn from(r: EmployeeRow) -> Self {
+        let display_name = roster_name(
+            r.first_name.as_deref(),
+            r.middle_initial.as_deref(),
+            r.last_name.as_deref(),
+            r.name.as_deref(),
+        );
+        Employee {
+            id: r.id,
+            name: r.name,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            middle_initial: r.middle_initial,
+            display_name,
+            employee_number: r.employee_number,
+            email: r.email,
+            google_sub: r.google_sub,
+            role: r.role,
+            pay_method: r.pay_method,
+            pay_frequency: r.pay_frequency,
+            is_salaried: r.is_salaried,
+            salary: r.salary,
+            has_account: r.has_account,
+            is_active: r.is_active,
+            created_at: r.created_at,
+        }
+    }
+}
+
+// Trim to a value, or None when blank. Used for the optional middle initial.
+fn trimmed(v: Option<&String>) -> Option<String> {
+    v.map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string())
+}
+
+// First/last are required; a middle initial is normalised to one uppercase letter.
+fn name_parts(
+    first: &str,
+    last: &str,
+    middle_initial: Option<&String>,
+) -> Result<(String, String, Option<String>), (StatusCode, String)> {
+    let first = first.trim().to_string();
+    let last = last.trim().to_string();
+    if first.is_empty() || last.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "First and last name are both required.".to_string()));
+    }
+    let mi = trimmed(middle_initial)
+        .and_then(|s| s.chars().next())
+        .map(|c| c.to_uppercase().to_string());
+    Ok((first, last, mi))
+}
+
 #[derive(Deserialize)]
 pub struct UpdateEmployee {
-    name: String,
+    first_name: String,
+    last_name: String,
+    #[serde(default)]
+    middle_initial: Option<String>,
     employee_number: Option<String>,
     email: Option<String>,
     role: String,
@@ -54,35 +141,46 @@ pub async fn create_employee(
     _super: SuperAdminEmployee,
     Json(payload): Json<NewEmployee>,
 ) -> Result<(StatusCode, Json<Employee>), (StatusCode, String)> {
+    let (first, last, middle_initial) =
+        name_parts(&payload.first_name, &payload.last_name, payload.middle_initial.as_ref())?;
+
     // Friendly check: is the employee number already taken?
     if let Some(ref num) = payload.employee_number {
         let conflict = sqlx::query!(
-            "SELECT name FROM employees WHERE employee_number = $1", num
+            "SELECT name, first_name, last_name, middle_initial FROM employees WHERE employee_number = $1",
+            num
         )
         .fetch_optional(&pool).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if let Some(row) = conflict {
             return Err((
                 StatusCode::CONFLICT,
-                format!("Employee number {} is already used by {}.", num, row.name),
+                format!("Employee number {} is already used by {}.", num, roster_name(
+                    row.first_name.as_deref(), row.middle_initial.as_deref(),
+                    row.last_name.as_deref(), row.name.as_deref(),
+                )),
             ));
         }
     }
 
     let employee = sqlx::query_as!(
-        Employee,
+        EmployeeRow,
         r#"
         INSERT INTO employees
-            (name, employee_number, email, role, pay_method, pay_frequency, is_salaried, salary)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (first_name, last_name, middle_initial, employee_number, email,
+             role, pay_method, pay_frequency, is_salaried, salary)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING
-            id, name, employee_number, email, google_sub,
+            id, name, first_name, last_name, middle_initial,
+            employee_number, email, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
             created_at
         "#,
-        payload.name,
+        first,
+        last,
+        middle_initial,
         payload.employee_number,
         payload.email,
         payload.role,
@@ -94,30 +192,31 @@ pub async fn create_employee(
     .fetch_one(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(employee)))
+    Ok((StatusCode::CREATED, Json(employee.into())))
 }
 
 pub async fn list_employees(
     State(pool): State<PgPool>,
 ) -> Result<Json<Vec<Employee>>, (StatusCode, String)> {
     let employees = sqlx::query_as!(
-        Employee,
+        EmployeeRow,
         r#"
         SELECT
-            id, name, employee_number, email, google_sub,
+            id, name, first_name, last_name, middle_initial,
+            employee_number, email, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
             created_at
         FROM employees
-        ORDER BY name
+        ORDER BY COALESCE(last_name, name), first_name
         "#
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(employees))
+    Ok(Json(employees.into_iter().map(Employee::from).collect()))
 }
 
 // PUT /admin/employees/:id — update an employee. Super-admin only.
@@ -127,6 +226,9 @@ pub async fn update_employee(
     Path(employee_id): Path<i64>,
     Json(payload): Json<UpdateEmployee>,
 ) -> Result<Json<Employee>, (StatusCode, String)> {
+    let (first, last, middle_initial) =
+        name_parts(&payload.first_name, &payload.last_name, payload.middle_initial.as_ref())?;
+
     // --- Guard: don't let the last super_admin lose that role ---
     // If this employee is currently super_admin and the new role isn't,
     // make sure at least one OTHER super_admin remains.
@@ -157,7 +259,10 @@ pub async fn update_employee(
     // --- Friendly check: is the employee number taken by someone else? ---
     if let Some(ref num) = payload.employee_number {
         let conflict = sqlx::query!(
-            "SELECT name FROM employees WHERE employee_number = $1 AND id != $2",
+            r#"
+            SELECT name, first_name, last_name, middle_initial
+            FROM employees WHERE employee_number = $1 AND id != $2
+            "#,
             num, employee_id
         )
         .fetch_optional(&pool).await
@@ -165,28 +270,35 @@ pub async fn update_employee(
         if let Some(row) = conflict {
             return Err((
                 StatusCode::CONFLICT,
-                format!("Employee number {} is already used by {}.", num, row.name),
+                format!("Employee number {} is already used by {}.", num, roster_name(
+                    row.first_name.as_deref(), row.middle_initial.as_deref(),
+                    row.last_name.as_deref(), row.name.as_deref(),
+                )),
             ));
         }
     }
 
     // --- Do the update ---
     let employee = sqlx::query_as!(
-        Employee,
+        EmployeeRow,
         r#"
         UPDATE employees
-        SET name = $1, employee_number = $2, email = $3,
-            role = $4, pay_method = $5, pay_frequency = $6,
-            is_salaried = $7, salary = $8
-        WHERE id = $9
+        SET first_name = $1, last_name = $2, middle_initial = $3,
+            employee_number = $4, email = $5,
+            role = $6, pay_method = $7, pay_frequency = $8,
+            is_salaried = $9, salary = $10
+        WHERE id = $11
         RETURNING
-            id, name, employee_number, email, google_sub,
+            id, name, first_name, last_name, middle_initial,
+            employee_number, email, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
             created_at
         "#,
-        payload.name,
+        first,
+        last,
+        middle_initial,
         payload.employee_number,
         payload.email,
         payload.role,
@@ -199,7 +311,7 @@ pub async fn update_employee(
     .fetch_one(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(employee))
+    Ok(Json(employee.into()))
 }
 // --- Deactivate / reactivate / hard-delete -------------------------------
 //
@@ -274,12 +386,13 @@ pub async fn set_employee_active(
     }
 
     let employee = sqlx::query_as!(
-        Employee,
+        EmployeeRow,
         r#"
         UPDATE employees SET is_active = $1
         WHERE id = $2
         RETURNING
-            id, name, employee_number, email, google_sub,
+            id, name, first_name, last_name, middle_initial,
+            employee_number, email, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
@@ -302,7 +415,7 @@ pub async fn set_employee_active(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
-    Ok(Json(employee))
+    Ok(Json(employee.into()))
 }
 
 // DELETE /admin/employees/:id — permanent hard-delete. Super-admin only.

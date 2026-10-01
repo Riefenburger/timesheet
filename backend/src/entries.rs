@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use crate::auth::{AdminEmployee, CurrentEmployee};
+use crate::names::roster_name;
 
 // For private entries, hours are derived from duration × count. For normal
 // entries, the provided hours are used as-is. Returns (hours, duration, count).
@@ -402,13 +403,12 @@ pub async fn list_all_entries(
     State(pool): State<PgPool>,
     _admin: AdminEmployee,
 ) -> Result<Json<Vec<AdminTimeEntry>>, (StatusCode, String)> {
-    let entries = sqlx::query_as!(
-        AdminTimeEntry,
+    let rows = sqlx::query!(
         r#"
         SELECT
             t.id,
             t.employee_id,
-            e.name           AS employee_name,
+            e.name, e.first_name, e.last_name, e.middle_initial,
             e.employee_number AS employee_number,
             t.entry_date,
             t.class_name,
@@ -419,12 +419,29 @@ pub async fn list_all_entries(
             t.created_at
         FROM time_entries t
         JOIN employees e ON e.id = t.employee_id
-        ORDER BY e.name, t.entry_date DESC
+        ORDER BY COALESCE(e.last_name, e.name), e.first_name, t.entry_date DESC
         "#
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let entries = rows.into_iter().map(|r| AdminTimeEntry {
+        id: r.id,
+        employee_id: r.employee_id,
+        employee_name: roster_name(
+            r.first_name.as_deref(), r.middle_initial.as_deref(),
+            r.last_name.as_deref(), r.name.as_deref(),
+        ),
+        employee_number: r.employee_number,
+        entry_date: r.entry_date,
+        class_name: r.class_name,
+        teacher_room: r.teacher_room,
+        details: r.details,
+        hours: r.hours,
+        category: r.category,
+        created_at: r.created_at,
+    }).collect();
 
     Ok(Json(entries))
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            t.id,\n            t.employee_id,\n            e.name           AS employee_name,\n            e.employee_number AS employee_number,\n            t.entry_date,\n            t.class_name,\n            t.teacher_room,\n            t.details,\n            t.hours,\n            t.category,\n            t.created_at\n        FROM time_entries t\n        JOIN employees e ON e.id = t.employee_id\n        ORDER BY e.name, t.entry_date DESC\n        ",
+  "query": "\n        SELECT\n            t.id,\n            t.employee_id,\n            e.name, e.first_name, e.last_name, e.middle_initial,\n            e.employee_number AS employee_number,\n            t.entry_date,\n            t.class_name,\n            t.teacher_room,\n            t.details,\n            t.hours,\n            t.category,\n            t.created_at\n        FROM time_entries t\n        JOIN employees e ON e.id = t.employee_id\n        ORDER BY COALESCE(e.last_name, e.name), e.first_name, t.entry_date DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "ordinal": 2,
-        "name": "employee_name",
+        "name": "name",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -38,6 +38,39 @@
       },
       {
         "ordinal": 3,
+        "name": "first_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "last_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "middle_initial",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "middle_initial"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
         "name": "employee_number",
         "type_info": "Text",
         "origin": {
@@ -48,7 +81,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 7,
         "name": "entry_date",
         "type_info": "Date",
         "origin": {
@@ -59,7 +92,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 8,
         "name": "class_name",
         "type_info": "Text",
         "origin": {
@@ -70,7 +103,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 9,
         "name": "teacher_room",
         "type_info": "Text",
         "origin": {
@@ -81,7 +114,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 10,
         "name": "details",
         "type_info": "Text",
         "origin": {
@@ -92,7 +125,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 11,
         "name": "hours",
         "type_info": "Numeric",
         "origin": {
@@ -103,7 +136,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 12,
         "name": "category",
         "type_info": "Text",
         "origin": {
@@ -114,7 +147,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 13,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -131,7 +164,10 @@
     "nullable": [
       false,
       false,
-      false,
+      true,
+      true,
+      true,
+      true,
       true,
       false,
       false,
@@ -142,5 +178,5 @@
       false
     ]
   },
-  "hash": "c4f2c90805f7a5d5897f6f2bf5be96a3474174065951eb04019d83808187c4d8"
+  "hash": "0958bd096c0cf588fba8e2908e335ea73a0a4f1e07e8822a14e3c720794462da"
 }

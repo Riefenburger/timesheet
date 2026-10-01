@@ -15,9 +15,12 @@ const editingId = ref(null);
 const saving = ref(false);
 const modalError = ref(null);
 const form = reactive({
-  name: "", employee_number: "", email: "",
+  first_name: "", last_name: "", middle_initial: "",
+  employee_number: "", email: "",
   role: "user", pay_method: "payroll", pay_frequency: "bimonthly", is_salaried: false, salary: null,
   _hasAccount: false,
+  // The pre-split single string, shown read-only while back-filling. Not sent.
+  _legacyName: null,
 });
 
 const rates = ref([]);
@@ -26,8 +29,15 @@ const rateError = ref(null);
 
 // --- Active / inactive ---
 const showInactive = ref(false);
-const activeEmployees = computed(() =>
-  showInactive.value ? employees.value : employees.value.filter((e) => e.is_active));
+const onlyNeedsSplit = ref(false);
+// first_name is null exactly when the row still holds a pre-split single name
+// (the name_parts_paired CHECK guarantees a row is never half-split).
+const needsSplitCount = computed(() => employees.value.filter((e) => !e.first_name).length);
+const activeEmployees = computed(() => {
+  let list = showInactive.value ? employees.value : employees.value.filter((e) => e.is_active);
+  if (onlyNeedsSplit.value) list = list.filter((e) => !e.first_name);
+  return list;
+});
 const inactiveCount = computed(() => employees.value.filter((e) => !e.is_active).length);
 
 const confirmDeactivate = ref(false);
@@ -80,6 +90,16 @@ async function loadDurations() {
   catch (e) { durations.value = []; }
 }
 
+// Mirrors the backend roster format so the confirm copy names the same string
+// the list shows, including for a row that has not been split yet.
+const formDisplayName = computed(() => {
+  const f = form.first_name.trim();
+  const l = form.last_name.trim();
+  const mi = form.middle_initial.trim();
+  if (f && l) return mi ? `${l}, ${mi} ${f}` : `${l}, ${f}`;
+  return form._legacyName || "this employee";
+});
+
 function roleLabel(r) {
   return { user: "User", admin: "Admin", super_admin: "Super Admin" }[r] || r;
 }
@@ -97,7 +117,9 @@ async function loadEmployees() {
 }
 
 function resetForm() {
-  form.name = ""; form.employee_number = ""; form.email = "";
+  form.first_name = ""; form.last_name = ""; form.middle_initial = "";
+  form._legacyName = null;
+  form.employee_number = ""; form.email = "";
   form.role = "user"; form.pay_method = "payroll"; form.pay_frequency = "bimonthly"; form.is_salaried = false; form.salary = null;
   form._hasAccount = false;
 }
@@ -113,7 +135,10 @@ async function openEdit(emp) {
   // clobber the values assigned below.
   resetModalState();
   editingId.value = emp.id;
-  form.name = emp.name;
+  form.first_name = emp.first_name ?? "";
+  form.last_name = emp.last_name ?? "";
+  form.middle_initial = emp.middle_initial ?? "";
+  form._legacyName = emp.name ?? null;
   form.employee_number = emp.employee_number ?? "";
   form.email = emp.email ?? "";
   form.role = emp.role;
@@ -142,7 +167,9 @@ async function saveEmployee() {
     const employeeNumber = (form.employee_number ?? "").trim();
     const email = (form.email ?? "").trim();
     const body = {
-      name: form.name,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
+      middle_initial: form.middle_initial.trim() === "" ? null : form.middle_initial.trim(),
       employee_number: employeeNumber === "" ? null : employeeNumber,
       email: email === "" ? null : email,
       role: form.role,
@@ -490,6 +517,10 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-ink-900">Manage Employees</h1>
         <div class="flex items-center gap-3">
+          <label v-if="needsSplitCount > 0" class="flex items-center gap-2 text-sm text-amber-700">
+            <input v-model="onlyNeedsSplit" type="checkbox" class="rounded" />
+            Needs name split ({{ needsSplitCount }})
+          </label>
           <label v-if="inactiveCount > 0" class="flex items-center gap-2 text-sm text-ink-500">
             <input v-model="showInactive" type="checkbox" class="rounded" />
             Show inactive ({{ inactiveCount }})
@@ -523,7 +554,9 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
             <tr v-for="emp in activeEmployees" :key="emp.id" class="group"
               :class="emp.is_active ? '' : 'bg-slate-50/60'">
               <td class="px-4 py-3" :class="emp.is_active ? 'text-ink-900' : 'text-ink-400'">
-                {{ emp.name }}
+                {{ emp.display_name }}
+                <span v-if="!emp.first_name" title="Still stored as one name — open to split it"
+                  class="ml-2 text-xs rounded px-1.5 py-0.5 bg-amber-100 text-amber-700">Needs split</span>
                 <span v-if="!emp.is_active"
                   class="ml-2 text-xs rounded px-1.5 py-0.5 bg-slate-200 text-ink-500">Inactive</span>
               </td>
@@ -607,9 +640,30 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           </template>
         </div>
         <form @submit.prevent="saveEmployee" class="space-y-3">
-          <div>
-            <label class="block text-sm font-medium text-ink-700 mb-1">Name</label>
-            <input v-model="form.name" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          <!-- Shown until this employee has been split. The stored string is the
+               only copy of the original, so it is displayed rather than guessed at. -->
+          <div v-if="form._legacyName && !form.first_name"
+            class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <div class="text-xs text-amber-700 mb-0.5">Currently stored as one name:</div>
+            <div class="text-sm text-ink-900 font-medium">{{ form._legacyName }}</div>
+            <div class="text-xs text-amber-700 mt-1">Split it into the fields below and save.</div>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-ink-700 mb-1">First name</label>
+              <input v-model="form.first_name" type="text" required
+                class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
+            <div class="w-full sm:w-20">
+              <label class="block text-sm font-medium text-ink-700 mb-1">MI</label>
+              <input v-model="form.middle_initial" type="text" maxlength="1"
+                placeholder="—" class="w-full rounded-lg border border-slate-300 px-3 py-2 uppercase" />
+            </div>
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-ink-700 mb-1">Last name</label>
+              <input v-model="form.last_name" type="text" required
+                class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-ink-700 mb-1">Employee # <span class="text-ink-400 font-normal">(payroll only)</span></label>
@@ -739,7 +793,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           <div v-if="editingIsActive">
             <template v-if="confirmDeactivate">
               <p class="text-sm text-ink-700 mb-2">
-                Deactivate <span class="font-medium">{{ form.name }}</span>? They'll be hidden
+                Deactivate <span class="font-medium">{{ formDisplayName }}</span>? They'll be hidden
                 from the employee list and left out of payroll runs, and they'll lose portal
                 access. All of their entries and rates are kept, and you can reactivate them
                 at any time.
@@ -767,7 +821,7 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           <div class="mt-4 pt-4 border-t border-dashed border-red-200">
             <template v-if="confirmDelete">
               <p class="text-sm text-red-700 mb-2">
-                Permanently delete <span class="font-medium">{{ form.name }}</span>? This
+                Permanently delete <span class="font-medium">{{ formDisplayName }}</span>? This
                 removes the employee, their rates, any invites and their login. It cannot be
                 undone. If they have any payroll history this will be refused — deactivate
                 them instead.

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO employees\n            (name, employee_number, email, role, pay_method, pay_frequency, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        ",
+  "query": "\n        SELECT id, name, first_name, last_name, middle_initial,\n               employee_number, pay_method, pay_frequency, is_active\n        FROM employees\n        ORDER BY COALESCE(last_name, name), first_name\n        ",
   "describe": {
     "columns": [
       {
@@ -27,45 +27,45 @@
       },
       {
         "ordinal": 2,
+        "name": "first_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "last_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "middle_initial",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "middle_initial"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "employee_number",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "employees",
             "name": "employee_number"
-          }
-        }
-      },
-      {
-        "ordinal": 3,
-        "name": "email",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "email"
-          }
-        }
-      },
-      {
-        "ordinal": 4,
-        "name": "google_sub",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "google_sub"
-          }
-        }
-      },
-      {
-        "ordinal": 5,
-        "name": "role",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "role"
           }
         }
       },
@@ -93,34 +93,6 @@
       },
       {
         "ordinal": 8,
-        "name": "is_salaried",
-        "type_info": "Bool",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "is_salaried"
-          }
-        }
-      },
-      {
-        "ordinal": 9,
-        "name": "salary",
-        "type_info": "Numeric",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "salary"
-          }
-        }
-      },
-      {
-        "ordinal": 10,
-        "name": "has_account!",
-        "type_info": "Bool",
-        "origin": "Expression"
-      },
-      {
-        "ordinal": 11,
         "name": "is_active",
         "type_info": "Bool",
         "origin": {
@@ -129,46 +101,22 @@
             "name": "is_active"
           }
         }
-      },
-      {
-        "ordinal": 12,
-        "name": "created_at",
-        "type_info": "Timestamptz",
-        "origin": {
-          "Table": {
-            "table": "employees",
-            "name": "created_at"
-          }
-        }
       }
     ],
     "parameters": {
-      "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Bool",
-        "Numeric"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
-      false,
       true,
       true,
       true,
-      false,
-      false,
-      false,
-      false,
       true,
-      null,
+      true,
+      false,
       false,
       false
     ]
   },
-  "hash": "ee504fd20b115ec42fd757d1e9ee5a662d2dc82a432d5e968827c822c286f8c8"
+  "hash": "302f4f7e37965ffa9b7496e1f2e6f90ae90e60e1347ea89db61e9706c02b050f"
 }

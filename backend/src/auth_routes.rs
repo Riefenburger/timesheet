@@ -6,6 +6,7 @@ use sqlx::PgPool;
 
 use crate::auth::CurrentEmployee;
 use crate::auth_core::{generate_token, verify_password};
+use crate::names::personal_name;
 
 use crate::auth::SuperAdminEmployee;
 use crate::auth_core::hash_password;
@@ -84,7 +85,7 @@ pub async fn check_invite(
 ) -> Result<Json<InviteCheck>, (StatusCode, String)> {
     let row = sqlx::query!(
         r#"
-        SELECT e.name, e.email
+        SELECT e.name, e.first_name, e.last_name, e.middle_initial, e.email
         FROM invites i
         JOIN employees e ON e.id = i.employee_id
         WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()
@@ -96,7 +97,12 @@ pub async fn check_invite(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((StatusCode::NOT_FOUND, "This invite link is invalid or has expired.".to_string()))?;
 
-    Ok(Json(InviteCheck { employee_name: row.name, email: row.email }))
+    // "Welcome, Mark" — the person's own name, not the roster form.
+    let employee_name = personal_name(
+        row.first_name.as_deref(), row.middle_initial.as_deref(),
+        row.last_name.as_deref(), row.name.as_deref(),
+    );
+    Ok(Json(InviteCheck { employee_name, email: row.email }))
 }
 
 #[derive(Deserialize)]
@@ -262,7 +268,7 @@ pub async fn me(
     current: CurrentEmployee,
 ) -> Result<Json<MeResponse>, (StatusCode, String)> {
     let row = sqlx::query!(
-        "SELECT id, name, email, role FROM employees WHERE id = $1",
+        "SELECT id, name, first_name, last_name, middle_initial, email, role FROM employees WHERE id = $1",
         current.id
     )
     .fetch_optional(&pool)
@@ -270,7 +276,12 @@ pub async fn me(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((StatusCode::UNAUTHORIZED, "Unknown employee".to_string()))?;
 
-    Ok(Json(MeResponse { id: row.id, name: row.name, email: row.email, role: row.role }))
+    // Shown in the nav and the My Time header, so personal format.
+    let name = personal_name(
+        row.first_name.as_deref(), row.middle_initial.as_deref(),
+        row.last_name.as_deref(), row.name.as_deref(),
+    );
+    Ok(Json(MeResponse { id: row.id, name, email: row.email, role: row.role }))
 }
 
 // POST /admin/employees/{id}/reset-account — super-admin clears an employee's

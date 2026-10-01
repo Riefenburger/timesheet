@@ -10,6 +10,7 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 use crate::auth::AdminEmployee;
+use crate::names::roster_name;
 
 use chrono::Datelike;
 
@@ -392,7 +393,12 @@ pub async fn compute_totals(
 ) -> Result<Vec<EmployeeTotals>, (StatusCode, String)> {
     // All employees.
     let employees = sqlx::query!(
-        r#"SELECT id, name, employee_number, pay_method, pay_frequency, is_active FROM employees ORDER BY name"#
+        r#"
+        SELECT id, name, first_name, last_name, middle_initial,
+               employee_number, pay_method, pay_frequency, is_active
+        FROM employees
+        ORDER BY COALESCE(last_name, name), first_name
+        "#
     ).fetch_all(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     // Stored (admin_edited) normal category rows.
@@ -600,7 +606,10 @@ pub async fn compute_totals(
 
         result.push(EmployeeTotals {
             employee_id: emp.id,
-            employee_name: emp.name.clone(),
+            employee_name: roster_name(
+                emp.first_name.as_deref(), emp.middle_initial.as_deref(),
+                emp.last_name.as_deref(), emp.name.as_deref(),
+            ),
             employee_number: emp.employee_number.clone().unwrap_or_default(),
             pay_method: emp.pay_method.clone(),
             pay_frequency: emp.pay_frequency.clone(),

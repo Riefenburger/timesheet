@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE employees SET is_active = $1\n        WHERE id = $2\n        RETURNING\n            id, name, employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        ",
+  "query": "\n        INSERT INTO employees\n            (first_name, last_name, middle_initial, employee_number, email,\n             role, pay_method, pay_frequency, is_salaried, salary)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        RETURNING\n            id, name, first_name, last_name, middle_initial,\n            employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,39 @@
       },
       {
         "ordinal": 2,
+        "name": "first_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "last_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "middle_initial",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "middle_initial"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "employee_number",
         "type_info": "Text",
         "origin": {
@@ -37,7 +70,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 6,
         "name": "email",
         "type_info": "Text",
         "origin": {
@@ -48,7 +81,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 7,
         "name": "google_sub",
         "type_info": "Text",
         "origin": {
@@ -59,7 +92,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 8,
         "name": "role",
         "type_info": "Text",
         "origin": {
@@ -70,7 +103,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 9,
         "name": "pay_method",
         "type_info": "Text",
         "origin": {
@@ -81,7 +114,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 10,
         "name": "pay_frequency",
         "type_info": "Text",
         "origin": {
@@ -92,7 +125,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 11,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -103,7 +136,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 12,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -114,13 +147,13 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 13,
         "name": "has_account!",
         "type_info": "Bool",
         "origin": "Expression"
       },
       {
-        "ordinal": 11,
+        "ordinal": 14,
         "name": "is_active",
         "type_info": "Bool",
         "origin": {
@@ -131,7 +164,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 15,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -144,13 +177,24 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
         "Bool",
-        "Int8"
+        "Numeric"
       ]
     },
     "nullable": [
       false,
-      false,
+      true,
+      true,
+      true,
+      true,
       true,
       true,
       true,
@@ -164,5 +208,5 @@
       false
     ]
   },
-  "hash": "24b6efb59857080c8ae8d1f8cc25a891a50cca3c38b0e584db2f0a41cecef107"
+  "hash": "129b391947414be76a08c93c8b23899618c34371bc5a5cb1e43fb02906748b9f"
 }
