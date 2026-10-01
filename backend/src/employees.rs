@@ -98,6 +98,46 @@ impl From<EmployeeRow> for Employee {
     }
 }
 
+// This endpoint REPLACES every field, so serde's default treatment of a missing
+// Option field — silently None — would null a column the caller never mentioned.
+// On payroll data that is real data loss: forget `email` in a script and an
+// employee quietly loses their login. Fail loud instead, naming what is missing.
+fn require_fields(
+    body: &serde_json::Value,
+    fields: &[&str],
+) -> Result<(), (StatusCode, String)> {
+    let obj = body.as_object().ok_or((
+        StatusCode::BAD_REQUEST,
+        "Expected a JSON object.".to_string(),
+    ))?;
+    let missing: Vec<&str> = fields.iter().copied().filter(|f| !obj.contains_key(*f)).collect();
+    if !missing.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Missing field(s): {}. This endpoint replaces every field, so each must be \
+                 sent explicitly — use null to clear one.",
+                missing.join(", ")
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Every field UpdateEmployee replaces. Keep in step with that struct.
+const UPDATE_EMPLOYEE_FIELDS: &[&str] = &[
+    "first_name",
+    "last_name",
+    "middle_initial",
+    "employee_number",
+    "email",
+    "role",
+    "pay_method",
+    "pay_frequency",
+    "is_salaried",
+    "salary",
+];
+
 // Trim to a value, or None when blank. Used for the optional middle initial.
 fn trimmed(v: Option<&String>) -> Option<String> {
     v.map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string())
@@ -124,7 +164,6 @@ fn name_parts(
 pub struct UpdateEmployee {
     first_name: String,
     last_name: String,
-    #[serde(default)]
     middle_initial: Option<String>,
     employee_number: Option<String>,
     email: Option<String>,
@@ -224,8 +263,12 @@ pub async fn update_employee(
     State(pool): State<PgPool>,
     _super: SuperAdminEmployee,
     Path(employee_id): Path<i64>,
-    Json(payload): Json<UpdateEmployee>,
+    Json(raw): Json<serde_json::Value>,
 ) -> Result<Json<Employee>, (StatusCode, String)> {
+    require_fields(&raw, UPDATE_EMPLOYEE_FIELDS)?;
+    let payload: UpdateEmployee = serde_json::from_value(raw)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid field: {}", e)))?;
+
     let (first, last, middle_initial) =
         name_parts(&payload.first_name, &payload.last_name, payload.middle_initial.as_ref())?;
 
@@ -474,4 +517,82 @@ pub async fn delete_employee(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn full_body() -> serde_json::Value {
+        json!({
+            "first_name": "Mark", "last_name": "Doherty", "middle_initial": "J",
+            "employee_number": "937", "email": "mark@example.com",
+            "role": "super_admin", "pay_method": "payroll",
+            "pay_frequency": "bimonthly", "is_salaried": false, "salary": null
+        })
+    }
+
+    #[test]
+    fn a_complete_body_passes() {
+        assert!(require_fields(&full_body(), UPDATE_EMPLOYEE_FIELDS).is_ok());
+    }
+
+    #[test]
+    fn an_explicit_null_is_accepted_as_clearing_the_field() {
+        // Present-but-null is how a caller says "clear this".
+        let mut body = full_body();
+        body["email"] = serde_json::Value::Null;
+        assert!(require_fields(&body, UPDATE_EMPLOYEE_FIELDS).is_ok());
+    }
+
+    #[test]
+    fn a_missing_field_is_rejected_rather_than_silently_nulled() {
+        // The regression this exists for: an omitted email used to wipe the
+        // employee's login instead of failing.
+        let mut body = full_body();
+        body.as_object_mut().unwrap().remove("email");
+        let (code, msg) = require_fields(&body, UPDATE_EMPLOYEE_FIELDS).unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(msg.contains("email"), "message should name the field: {msg}");
+    }
+
+    #[test]
+    fn every_missing_field_is_named_at_once() {
+        let mut body = full_body();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("email");
+        obj.remove("employee_number");
+        obj.remove("salary");
+        let (_, msg) = require_fields(&body, UPDATE_EMPLOYEE_FIELDS).unwrap_err();
+        for f in ["email", "employee_number", "salary"] {
+            assert!(msg.contains(f), "{f} missing from message: {msg}");
+        }
+    }
+
+    #[test]
+    fn an_empty_body_names_everything() {
+        let (_, msg) = require_fields(&json!({}), UPDATE_EMPLOYEE_FIELDS).unwrap_err();
+        for f in UPDATE_EMPLOYEE_FIELDS {
+            assert!(msg.contains(f), "{f} missing from message: {msg}");
+        }
+    }
+
+    #[test]
+    fn a_non_object_body_is_rejected() {
+        assert!(require_fields(&json!([1, 2, 3]), UPDATE_EMPLOYEE_FIELDS).is_err());
+        assert!(require_fields(&json!("nope"), UPDATE_EMPLOYEE_FIELDS).is_err());
+    }
+
+    #[test]
+    fn the_field_list_matches_what_the_struct_replaces() {
+        // Guards against adding a column to UpdateEmployee and forgetting the
+        // list, which would reopen the silent-null hole for that field.
+        let body = full_body();
+        let keys: Vec<&str> = body.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+        assert_eq!(keys.len(), UPDATE_EMPLOYEE_FIELDS.len());
+        for k in keys {
+            assert!(UPDATE_EMPLOYEE_FIELDS.contains(&k), "{k} not in UPDATE_EMPLOYEE_FIELDS");
+        }
+    }
 }
