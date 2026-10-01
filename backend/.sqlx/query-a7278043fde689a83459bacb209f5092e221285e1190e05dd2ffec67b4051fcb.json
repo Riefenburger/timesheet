@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE employees\n        SET first_name = $1, last_name = $2, middle_initial = $3,\n            employee_number = $4, email = $5,\n            role = $6, pay_method = $7, pay_frequency = $8,\n            is_salaried = $9, salary = $10\n        WHERE id = $11\n        RETURNING\n            id, name, first_name, last_name, middle_initial,\n            employee_number, email, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        ",
+  "query": "\n        SELECT\n            id, name, first_name, last_name, middle_initial,\n            employee_number, email, phone_number, google_sub,\n            role, pay_method, pay_frequency, is_salaried, salary,\n            (password_hash IS NOT NULL) AS \"has_account!\",\n            is_active,\n            created_at\n        FROM employees\n        ORDER BY COALESCE(last_name, name), first_name\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "phone_number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "employees",
+            "name": "phone_number"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "google_sub",
         "type_info": "Text",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "role",
         "type_info": "Text",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "pay_method",
         "type_info": "Text",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "pay_frequency",
         "type_info": "Text",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "is_salaried",
         "type_info": "Bool",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "salary",
         "type_info": "Numeric",
         "origin": {
@@ -147,13 +158,13 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "has_account!",
         "type_info": "Bool",
         "origin": "Expression"
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "is_active",
         "type_info": "Bool",
         "origin": {
@@ -164,7 +175,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -176,22 +187,11 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Bool",
-        "Numeric",
-        "Int8"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
+      true,
       true,
       true,
       true,
@@ -209,5 +209,5 @@
       false
     ]
   },
-  "hash": "d9554b70575077a34e48d7c579efe993b06952bdc21392f519f23adab1a4c098"
+  "hash": "a7278043fde689a83459bacb209f5092e221285e1190e05dd2ffec67b4051fcb"
 }

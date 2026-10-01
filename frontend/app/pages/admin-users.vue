@@ -16,7 +16,7 @@ const saving = ref(false);
 const modalError = ref(null);
 const form = reactive({
   first_name: "", last_name: "", middle_initial: "",
-  employee_number: "", email: "",
+  employee_number: "", email: "", phone_number: "",
   role: "user", pay_method: "payroll", pay_frequency: "bimonthly", is_salaried: false, salary: null,
   _hasAccount: false,
   // The pre-split single string, shown read-only while back-filling. Not sent.
@@ -119,7 +119,7 @@ async function loadEmployees() {
 function resetForm() {
   form.first_name = ""; form.last_name = ""; form.middle_initial = "";
   form._legacyName = null;
-  form.employee_number = ""; form.email = "";
+  form.employee_number = ""; form.email = ""; form.phone_number = "";
   form.role = "user"; form.pay_method = "payroll"; form.pay_frequency = "bimonthly"; form.is_salaried = false; form.salary = null;
   form._hasAccount = false;
 }
@@ -141,6 +141,7 @@ async function openEdit(emp) {
   form._legacyName = emp.name ?? null;
   form.employee_number = emp.employee_number ?? "";
   form.email = emp.email ?? "";
+  form.phone_number = emp.phone_number ?? "";
   form.role = emp.role;
   form.pay_method = emp.pay_method;
   form.pay_frequency = emp.pay_frequency;
@@ -172,6 +173,7 @@ async function saveEmployee() {
       middle_initial: form.middle_initial.trim() === "" ? null : form.middle_initial.trim(),
       employee_number: employeeNumber === "" ? null : employeeNumber,
       email: email === "" ? null : email,
+      phone_number: (form.phone_number ?? "").trim() === "" ? null : form.phone_number.trim(),
       role: form.role,
       pay_method: form.pay_method,
       pay_frequency: form.pay_frequency,
@@ -672,6 +674,19 @@ onMounted(() => { loadEmployees(); loadCategories(); loadDurations(); });
           <div>
             <label class="block text-sm font-medium text-ink-700 mb-1">Email (optional)</label>
             <input v-model="form.email" type="email" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-ink-700 mb-1">
+              Mobile number <span class="text-ink-400 font-normal">(optional)</span>
+            </label>
+            <input v-model="form.phone_number" type="tel" inputmode="tel"
+              placeholder="(555) 123-4567"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            <p class="text-xs text-amber-700 mt-1">
+              Enables phone login. A number you set here is not confirmed by text —
+              only enter one the employee has given you directly. Clear it to remove
+              phone login.
+            </p>
           </div>
           <div class="flex gap-3">
             <div class="flex-1">

@@ -8,7 +8,9 @@ use crate::auth::CurrentEmployee;
 use crate::auth_core::{generate_token, verify_password, SESSION_DAYS};
 use crate::names::personal_name;
 use crate::state::CookieConfig;
-use crate::verify::{normalize_phone, VerifyService};
+use crate::verify::{normalize_phone, VerifyError, VerifyService};
+use crate::ratelimit;
+use axum::http::HeaderMap;
 
 use crate::auth::SuperAdminEmployee;
 use crate::auth_core::hash_password;
@@ -113,6 +115,23 @@ pub struct SignupInput {
     password: String,
     phone_number: String,
     code: String,
+}
+
+/// Create a session row and return its token. Shared by email login, signup and
+/// phone login so the lifetime and the insert stay in one place.
+async fn create_session(pool: &PgPool, employee_id: i64) -> Result<String, (StatusCode, String)> {
+    let token = generate_token();
+    let expires = Utc::now() + Duration::days(SESSION_DAYS);
+    sqlx::query!(
+        "INSERT INTO sessions (token, employee_id, expires_at) VALUES ($1, $2, $3)",
+        token,
+        employee_id,
+        expires
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(token)
 }
 
 /// The session cookie. Secure in production (COOKIE_SECURE=true) so a
@@ -270,15 +289,133 @@ pub async fn signup(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Log them in immediately (create session + cookie).
-    let token = generate_token();
-    let expires = Utc::now() + Duration::days(SESSION_DAYS);
-    sqlx::query!(
-        "INSERT INTO sessions (token, employee_id, expires_at) VALUES ($1, $2, $3)",
-        token, employee_id, expires
+    let token = create_session(&pool, employee_id).await?;
+    Ok((jar.add(session_cookie(token, cookies)), StatusCode::NO_CONTENT))
+}
+
+#[derive(Deserialize)]
+pub struct PhoneStart {
+    phone_number: String,
+}
+
+#[derive(Deserialize)]
+pub struct PhoneVerify {
+    phone_number: String,
+    code: String,
+}
+
+// POST /auth/phone/start — text a login code to a number.
+//
+// NON-DISCLOSURE: this returns 204 for ANY well-formed number, whether or not an
+// account holds it. An unknown number simply gets no text. Returning an error
+// would turn this endpoint into a "does this person work here?" oracle, and
+// phone numbers are far more guessable than email addresses.
+//
+// The honest limit: someone who controls the number can tell "a text arrived"
+// from "none did". That is inherent to SMS login and cannot be papered over —
+// the rate limits, not the response shape, are what make enumeration expensive.
+pub async fn phone_start(
+    State(pool): State<PgPool>,
+    State(verify): State<VerifyService>,
+    headers: HeaderMap,
+    Json(payload): Json<PhoneStart>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Malformed input is told so: that reveals nothing about who has an account.
+    let phone = normalize_phone(&payload.phone_number).ok_or((
+        StatusCode::BAD_REQUEST,
+        "That doesn't look like a valid phone number.".to_string(),
+    ))?;
+
+    // A deployment with no Verify credentials is a global fact, independent of
+    // the number, so saying so leaks nothing.
+    if !verify.is_available() {
+        return Err(VerifyError::NotConfigured.as_response());
+    }
+
+    let ip = ratelimit::client_ip(&headers);
+
+    // Limits are applied BEFORE the lookup, and the attempt is recorded whatever
+    // we decide, so the limiter behaves identically for known and unknown
+    // numbers. Otherwise it would leak exactly what the 204 above conceals.
+    ratelimit::check_start_allowed(&pool, &phone, ip.as_deref()).await?;
+    ratelimit::record(&pool, &phone, ip.as_deref(), "start", false).await;
+
+    let employee = sqlx::query_scalar!(
+        "SELECT id FROM employees WHERE phone_number = $1 AND is_active = true",
+        phone
     )
-    .execute(&pool).await
+    .fetch_optional(&pool)
+    .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    if employee.is_some() {
+        // A per-request Twilio failure is logged and swallowed. Surfacing it
+        // would mean only KNOWN numbers could produce a 503, which is the leak
+        // again — the code screen offers resend and the password path instead.
+        if let Err(e) = verify.start(&phone).await {
+            eprintln!(
+                "phone login: Verify start failed for {}: {:?}",
+                crate::verify::masked(&phone),
+                e
+            );
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// POST /auth/phone/verify — exchange a texted code for a session.
+pub async fn phone_verify(
+    State(pool): State<PgPool>,
+    State(verify): State<VerifyService>,
+    State(cookies): State<CookieConfig>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(payload): Json<PhoneVerify>,
+) -> Result<(CookieJar, StatusCode), (StatusCode, String)> {
+    let phone = normalize_phone(&payload.phone_number).ok_or((
+        StatusCode::BAD_REQUEST,
+        "That doesn't look like a valid phone number.".to_string(),
+    ))?;
+    let ip = ratelimit::client_ip(&headers);
+
+    // Lockout is checked for unknown numbers too, so the lockout itself cannot
+    // be used to tell known from unknown.
+    ratelimit::check_code_allowed(&pool, &phone).await?;
+
+    // ONE message for every cause: wrong code, expired code, already-used code,
+    // unknown number, deactivated employee.
+    let failed = || {
+        (
+            StatusCode::UNAUTHORIZED,
+            "That code didn't work or has expired.".to_string(),
+        )
+    };
+
+    let employee = sqlx::query_scalar!(
+        "SELECT id FROM employees WHERE phone_number = $1 AND is_active = true",
+        phone
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let Some(employee_id) = employee else {
+        ratelimit::record(&pool, &phone, ip.as_deref(), "check", false).await;
+        return Err(failed());
+    };
+
+    let approved = verify
+        .check(&phone, payload.code.trim())
+        .await
+        .map_err(|e| e.as_response())?;
+
+    ratelimit::record(&pool, &phone, ip.as_deref(), "check", approved).await;
+    if !approved {
+        return Err(failed());
+    }
+
+    let token = create_session(&pool, employee_id).await?;
     Ok((jar.add(session_cookie(token, cookies)), StatusCode::NO_CONTENT))
 }
 
@@ -325,17 +462,7 @@ pub async fn login(
         ));
     }
 
-    // Create the session.
-    let token = generate_token();
-    let expires = Utc::now() + Duration::days(SESSION_DAYS);
-    sqlx::query!(
-        "INSERT INTO sessions (token, employee_id, expires_at) VALUES ($1, $2, $3)",
-        token, employee_id, expires
-    )
-    .execute(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    let token = create_session(&pool, employee_id).await?;
     Ok((jar.add(session_cookie(token, cookies)), StatusCode::NO_CONTENT))
 }
 

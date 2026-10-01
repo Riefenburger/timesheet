@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) AS \"failures!\"\n        FROM verification_attempts\n        WHERE kind = 'check' AND phone_number = $1 AND succeeded = false\n          AND created_at > now() - make_interval(mins => $2::int)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "failures!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9276fe941e5e912a8e638a3b401b3373229882e3b99bf66370370936f909323e"
+}

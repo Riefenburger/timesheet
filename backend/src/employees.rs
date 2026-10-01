@@ -5,11 +5,16 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use crate::auth::SuperAdminEmployee;
 use crate::names::roster_name;
+use crate::verify::normalize_phone;
 
 #[derive(Deserialize)]
 pub struct NewEmployee {
     first_name: String,
     last_name: String,
+    // An admin ASSERTS this number; unlike signup it is NOT SMS-verified, so it
+    // enables phone login for someone who never confirmed the handset. Only set
+    // it from a number the employee has confirmed out-of-band.
+    phone_number: Option<String>,
     #[serde(default)]
     middle_initial: Option<String>,
     employee_number: Option<String>,
@@ -25,6 +30,7 @@ pub struct NewEmployee {
 #[derive(Serialize)]
 pub struct Employee {
     id: i64,
+    phone_number: Option<String>,
     // The pre-split single string. Kept until the back-fill is done, and shown in
     // the edit modal as "Currently stored as" so an admin can split it by hand.
     name: Option<String>,
@@ -51,6 +57,7 @@ pub struct Employee {
 // formatted in exactly one place.
 struct EmployeeRow {
     id: i64,
+    phone_number: Option<String>,
     name: Option<String>,
     first_name: Option<String>,
     last_name: Option<String>,
@@ -78,6 +85,7 @@ impl From<EmployeeRow> for Employee {
         );
         Employee {
             id: r.id,
+            phone_number: r.phone_number,
             name: r.name,
             first_name: r.first_name,
             last_name: r.last_name,
@@ -131,6 +139,7 @@ const UPDATE_EMPLOYEE_FIELDS: &[&str] = &[
     "middle_initial",
     "employee_number",
     "email",
+    "phone_number",
     "role",
     "pay_method",
     "pay_frequency",
@@ -141,6 +150,37 @@ const UPDATE_EMPLOYEE_FIELDS: &[&str] = &[
 // Trim to a value, or None when blank. Used for the optional middle initial.
 fn trimmed(v: Option<&String>) -> Option<String> {
     v.map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string())
+}
+
+/// Normalise an admin-entered number, or None to clear it. Rejects a number
+/// another employee already holds, since phone_number is the login key.
+async fn admin_phone(
+    pool: &PgPool,
+    raw: Option<&String>,
+    employee_id: Option<i64>,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let Some(raw) = trimmed(raw) else { return Ok(None) };
+    let phone = normalize_phone(&raw).ok_or((
+        StatusCode::BAD_REQUEST,
+        "That doesn't look like a valid phone number.".to_string(),
+    ))?;
+
+    let taken = sqlx::query_scalar!(
+        "SELECT id FROM employees WHERE phone_number = $1 AND id != $2",
+        phone,
+        employee_id.unwrap_or(-1),
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if taken.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "That phone number is already linked to another employee.".to_string(),
+        ));
+    }
+    Ok(Some(phone))
 }
 
 // First/last are required; a middle initial is normalised to one uppercase letter.
@@ -164,6 +204,10 @@ fn name_parts(
 pub struct UpdateEmployee {
     first_name: String,
     last_name: String,
+    // An admin ASSERTS this number; unlike signup it is NOT SMS-verified, so it
+    // enables phone login for someone who never confirmed the handset. Only set
+    // it from a number the employee has confirmed out-of-band.
+    phone_number: Option<String>,
     middle_initial: Option<String>,
     employee_number: Option<String>,
     email: Option<String>,
@@ -182,6 +226,7 @@ pub async fn create_employee(
 ) -> Result<(StatusCode, Json<Employee>), (StatusCode, String)> {
     let (first, last, middle_initial) =
         name_parts(&payload.first_name, &payload.last_name, payload.middle_initial.as_ref())?;
+    let phone = admin_phone(&pool, payload.phone_number.as_ref(), None).await?;
 
     // Friendly check: is the employee number already taken?
     if let Some(ref num) = payload.employee_number {
@@ -207,11 +252,11 @@ pub async fn create_employee(
         r#"
         INSERT INTO employees
             (first_name, last_name, middle_initial, employee_number, email,
-             role, pay_method, pay_frequency, is_salaried, salary)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             phone_number, role, pay_method, pay_frequency, is_salaried, salary)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING
             id, name, first_name, last_name, middle_initial,
-            employee_number, email, google_sub,
+            employee_number, email, phone_number, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
@@ -222,6 +267,7 @@ pub async fn create_employee(
         middle_initial,
         payload.employee_number,
         payload.email,
+        phone,
         payload.role,
         payload.pay_method,
         payload.pay_frequency,
@@ -242,7 +288,7 @@ pub async fn list_employees(
         r#"
         SELECT
             id, name, first_name, last_name, middle_initial,
-            employee_number, email, google_sub,
+            employee_number, email, phone_number, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
@@ -271,6 +317,7 @@ pub async fn update_employee(
 
     let (first, last, middle_initial) =
         name_parts(&payload.first_name, &payload.last_name, payload.middle_initial.as_ref())?;
+    let phone = admin_phone(&pool, payload.phone_number.as_ref(), Some(employee_id)).await?;
 
     // --- Guard: don't let the last super_admin lose that role ---
     // If this employee is currently super_admin and the new role isn't,
@@ -327,13 +374,13 @@ pub async fn update_employee(
         r#"
         UPDATE employees
         SET first_name = $1, last_name = $2, middle_initial = $3,
-            employee_number = $4, email = $5,
-            role = $6, pay_method = $7, pay_frequency = $8,
-            is_salaried = $9, salary = $10
-        WHERE id = $11
+            employee_number = $4, email = $5, phone_number = $6,
+            role = $7, pay_method = $8, pay_frequency = $9,
+            is_salaried = $10, salary = $11
+        WHERE id = $12
         RETURNING
             id, name, first_name, last_name, middle_initial,
-            employee_number, email, google_sub,
+            employee_number, email, phone_number, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
@@ -344,6 +391,7 @@ pub async fn update_employee(
         middle_initial,
         payload.employee_number,
         payload.email,
+        phone,
         payload.role,
         payload.pay_method,
         payload.pay_frequency,
@@ -435,7 +483,7 @@ pub async fn set_employee_active(
         WHERE id = $2
         RETURNING
             id, name, first_name, last_name, middle_initial,
-            employee_number, email, google_sub,
+            employee_number, email, phone_number, google_sub,
             role, pay_method, pay_frequency, is_salaried, salary,
             (password_hash IS NOT NULL) AS "has_account!",
             is_active,
@@ -528,6 +576,7 @@ mod tests {
         json!({
             "first_name": "Mark", "last_name": "Doherty", "middle_initial": "J",
             "employee_number": "937", "email": "mark@example.com",
+            "phone_number": null,
             "role": "super_admin", "pay_method": "payroll",
             "pay_frequency": "bimonthly", "is_salaried": false, "salary": null
         })
