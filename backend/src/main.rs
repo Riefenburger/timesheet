@@ -71,6 +71,7 @@ async fn main() {
         .route("/auth/me", get(auth_routes::me))
         .route("/admin/invites", post(auth_routes::create_invite))
         .route("/auth/invite/{token}", get(auth_routes::check_invite))
+        .route("/auth/signup/start-verify", post(auth_routes::signup_start_verify))
         .route("/auth/signup", post(auth_routes::signup))
         .route("/admin/employees/{id}/reset-account", post(auth_routes::reset_account))
         .route("/private-durations", get(private_durations::list_durations))

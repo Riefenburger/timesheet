@@ -8,6 +8,7 @@ use crate::auth::CurrentEmployee;
 use crate::auth_core::{generate_token, verify_password, SESSION_DAYS};
 use crate::names::personal_name;
 use crate::state::CookieConfig;
+use crate::verify::{normalize_phone, VerifyService};
 
 use crate::auth::SuperAdminEmployee;
 use crate::auth_core::hash_password;
@@ -110,6 +111,8 @@ pub struct SignupInput {
     token: String,
     email: String,
     password: String,
+    phone_number: String,
+    code: String,
 }
 
 /// The session cookie. Secure in production (COOKIE_SECURE=true) so a
@@ -125,10 +128,88 @@ fn session_cookie(token: String, cookies: CookieConfig) -> Cookie<'static> {
 }
 
 // POST /auth/signup — consume an invite, set the password, log in. Public.
+#[derive(Deserialize)]
+pub struct SignupStartVerify {
+    token: String,
+    phone_number: String,
+}
+
+/// The invite predicate, identical in all three places that use it: unused,
+/// unexpired, and belonging to an employee who is still active.
+async fn employee_for_invite(
+    pool: &PgPool,
+    token: &str,
+) -> Result<i64, (StatusCode, String)> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT i.employee_id
+        FROM invites i
+        JOIN employees e ON e.id = i.employee_id
+        WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()
+          AND e.is_active = true
+        "#,
+        token
+    )
+    .fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((
+        StatusCode::BAD_REQUEST,
+        "This invite link is invalid or has expired.".to_string(),
+    ))
+}
+
+/// Normalise, and refuse a number another employee already holds.
+///
+/// Unlike the phone-LOGIN path, this does tell the caller the number is taken.
+/// It is actionable feedback for someone setting up their own account, and the
+/// surface is narrow: you need a valid unused invite to reach it at all.
+async fn usable_phone(
+    pool: &PgPool,
+    raw: &str,
+    employee_id: i64,
+) -> Result<String, (StatusCode, String)> {
+    let phone = normalize_phone(raw).ok_or((
+        StatusCode::BAD_REQUEST,
+        "That doesn't look like a valid phone number.".to_string(),
+    ))?;
+
+    let taken = sqlx::query_scalar!(
+        "SELECT id FROM employees WHERE phone_number = $1 AND id != $2",
+        phone,
+        employee_id
+    )
+    .fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if taken.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "That phone number is already linked to another account.".to_string(),
+        ));
+    }
+    Ok(phone)
+}
+
+// POST /auth/signup/start-verify — text a code to the number being registered.
+// PUBLIC, but gated by a valid unused invite token, so it is not an open SMS tap.
+// (The open path is phone login; that gets the rate limiting in stage 3.)
+pub async fn signup_start_verify(
+    State(pool): State<PgPool>,
+    State(verify): State<VerifyService>,
+    Json(payload): Json<SignupStartVerify>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let employee_id = employee_for_invite(&pool, &payload.token).await?;
+    let phone = usable_phone(&pool, &payload.phone_number, employee_id).await?;
+
+    verify.start(&phone).await.map_err(|e| e.as_response())?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn signup(
     State(pool): State<PgPool>,
     State(cookies): State<CookieConfig>,
     jar: CookieJar,
+    State(verify): State<VerifyService>,
     Json(payload): Json<SignupInput>,
 ) -> Result<(CookieJar, StatusCode), (StatusCode, String)> {
     if payload.password.len() < 8 {
@@ -137,21 +218,24 @@ pub async fn signup(
     let email = payload.email.trim().to_lowercase();
 
     // Validate the invite and get the employee.
-    let invite = sqlx::query!(
-        r#"
-        SELECT i.employee_id
-        FROM invites i
-        JOIN employees e ON e.id = i.employee_id
-        WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now()
-          AND e.is_active = true
-        "#,
-        payload.token
-    )
-    .fetch_optional(&pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::BAD_REQUEST, "This invite link is invalid or has expired.".to_string()))?;
+    let employee_id = employee_for_invite(&pool, &payload.token).await?;
+    let phone = usable_phone(&pool, &payload.phone_number, employee_id).await?;
 
-    let employee_id = invite.employee_id;
+    // The code is checked HERE, at the finalising call, rather than trusting a
+    // "verified" flag from the client — and Twilio will not approve the same
+    // verification twice, so one check is the whole gate. A number only reaches
+    // the column after this passes.
+    let approved = verify
+        .check(&phone, payload.code.trim())
+        .await
+        .map_err(|e| e.as_response())?;
+    if !approved {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "That code didn't work or has expired. Request a new one.".to_string(),
+        ));
+    }
+
     let hash = hash_password(&payload.password)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -161,13 +245,19 @@ pub async fn signup(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     sqlx::query!(
-        "UPDATE employees SET email = $1, password_hash = $2 WHERE id = $3",
-        email, hash, employee_id
+        "UPDATE employees SET email = $1, password_hash = $2, phone_number = $3 WHERE id = $4",
+        email, hash, phone, employee_id
     )
     .execute(&mut *tx).await
-    .map_err(|_e| {
-        // Unique-violation on email → friendly message.
-        (StatusCode::CONFLICT, "That email is already in use.".to_string())
+    .map_err(|e| {
+        // Unique violation on either email or phone_number. The uniqueness of
+        // both was checked above, so this is the race-loser path.
+        let msg = e.to_string();
+        if msg.contains("phone_number") {
+            (StatusCode::CONFLICT, "That phone number is already linked to another account.".to_string())
+        } else {
+            (StatusCode::CONFLICT, "That email is already in use.".to_string())
+        }
     })?;
 
     sqlx::query!(

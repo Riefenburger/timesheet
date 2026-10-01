@@ -10,6 +10,11 @@ const employeeName = ref(null);
 const email = ref("");
 const password = ref("");
 const confirmPassword = ref("");
+const phoneNumber = ref("");
+const code = ref("");
+// The form is one page; the code field only appears once a code has been sent.
+const codeSent = ref(false);
+const sending = ref(false);
 const error = ref(null);
 const checking = ref(true);
 const validInvite = ref(false);
@@ -34,21 +39,56 @@ onMounted(async () => {
   }
 });
 
+// Everything the account needs, checked before spending a text message.
+function validateDetails() {
+  if (password.value.length < 8) return "Password must be at least 8 characters.";
+  if (password.value !== confirmPassword.value) return "Passwords don't match.";
+  if (!phoneNumber.value.trim()) return "Enter your mobile number.";
+  return null;
+}
+
+async function sendCode() {
+  error.value = null;
+  const problem = validateDetails();
+  if (problem) { error.value = problem; return; }
+  sending.value = true;
+  try {
+    await $fetch("/api/auth/signup/start-verify", {
+      method: "POST",
+      body: { token: token.value, phone_number: phoneNumber.value },
+    });
+    codeSent.value = true;
+    code.value = "";
+  } catch (e) {
+    error.value = (e && e.data) ? String(e.data) : "Could not send a code. Check the number and try again.";
+  } finally {
+    sending.value = false;
+  }
+}
+
+// Let them fix a mistyped number without reloading the invite.
+function changeNumber() {
+  codeSent.value = false;
+  code.value = "";
+  error.value = null;
+}
+
 async function doSignup() {
   error.value = null;
-  if (password.value.length < 8) {
-    error.value = "Password must be at least 8 characters.";
-    return;
-  }
-  if (password.value !== confirmPassword.value) {
-    error.value = "Passwords don't match.";
-    return;
-  }
+  const problem = validateDetails();
+  if (problem) { error.value = problem; return; }
+  if (!code.value.trim()) { error.value = "Enter the code we texted you."; return; }
   submitting.value = true;
   try {
     await $fetch("/api/auth/signup", {
       method: "POST",
-      body: { token: token.value, email: email.value, password: password.value },
+      body: {
+        token: token.value,
+        email: email.value,
+        password: password.value,
+        phone_number: phoneNumber.value,
+        code: code.value.trim(),
+      },
     });
     await fetchMe();          // signup logs them in (cookie set)
     await navigateTo("/");
@@ -83,8 +123,40 @@ async function doSignup() {
             <label class="block text-sm font-medium text-ink-700 mb-1">Confirm password</label>
             <PasswordInput v-model="confirmPassword" autocomplete="new-password" />
           </div>
+          <div>
+            <label class="block text-sm font-medium text-ink-700 mb-1">Mobile number</label>
+            <input v-model="phoneNumber" type="tel" inputmode="tel" required
+              autocomplete="tel" placeholder="(555) 123-4567" :disabled="codeSent"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-ink-500" />
+            <p class="text-xs text-ink-400 mt-1">
+              We'll text you a code to confirm it. You can then sign in with your
+              phone instead of a password.
+            </p>
+          </div>
+
+          <!-- Step 2: only after a code has actually been sent. -->
+          <div v-if="codeSent">
+            <label class="block text-sm font-medium text-ink-700 mb-1">Verification code</label>
+            <input v-model="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+              maxlength="10" placeholder="123456"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 tracking-widest" />
+            <div class="flex flex-wrap gap-3 mt-1 text-xs">
+              <button type="button" @click="sendCode" :disabled="sending"
+                class="text-indigo-600 hover:text-indigo-800 disabled:opacity-50">
+                {{ sending ? "Sending…" : "Resend code" }}
+              </button>
+              <button type="button" @click="changeNumber"
+                class="text-ink-400 hover:text-ink-700">Use a different number</button>
+            </div>
+          </div>
+
           <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
-          <button type="submit" :disabled="submitting"
+
+          <button v-if="!codeSent" type="button" @click="sendCode" :disabled="sending"
+            class="w-full bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {{ sending ? "Sending code…" : "Send verification code" }}
+          </button>
+          <button v-else type="submit" :disabled="submitting"
             class="w-full bg-emerald-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50">
             {{ submitting ? "Creating…" : "Create account" }}
           </button>
