@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                WITH valid AS (\n                    SELECT s.token, s.employee_id\n                    FROM sessions s\n                    JOIN employees e ON e.id = s.employee_id\n                    WHERE s.token = $1 AND s.expires_at > now() AND e.is_active = true\n                ), bumped AS (\n                    UPDATE sessions\n                       SET expires_at = now() + make_interval(days => $2::int)\n                     WHERE token = (SELECT token FROM valid)\n                       AND expires_at < now() + make_interval(days => $2::int - 1)\n                )\n                SELECT employee_id AS \"employee_id!\" FROM valid\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "employee_id!",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "employee_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2cac9dd8c14fdff21a1679b90f0a70f3b8c963a091da2f709ba1251f333aba71"
+}

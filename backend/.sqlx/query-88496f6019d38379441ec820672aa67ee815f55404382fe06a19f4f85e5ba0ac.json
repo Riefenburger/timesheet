@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM verification_attempts WHERE created_at < now() - interval '1 day'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "88496f6019d38379441ec820672aa67ee815f55404382fe06a19f4f85e5ba0ac"
+}

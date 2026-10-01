@@ -1,9 +1,21 @@
+//! Password hashing, session tokens, and the session lifetime.
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
 
 // Hash a plaintext password with argon2 + a random salt.
+/// How long a session lives without use. Sessions are refreshed on use (see
+/// CurrentEmployee), so this is an INACTIVITY timeout: an active user never has
+/// to verify again, while an abandoned session dies on its own.
+///
+/// Long, because re-verifying by SMS costs money per attempt and is a real
+/// friction. The trade-off is a correspondingly longer window in which a stolen
+/// cookie is useful, which is why the cookie is Secure in production and why the
+/// admin revocation paths (deactivate / reset-account) delete sessions outright.
+pub const SESSION_DAYS: i64 = 120;
+
 pub fn hash_password(plain: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();

@@ -24,17 +24,37 @@ where
         if let Some(cookie) = jar.get("session") {
             let token = cookie.value();
             let pool = PgPool::from_ref(state);
-            // Deactivated employees have no portal access. Sessions are deleted
-            // when someone is deactivated, so this is the belt-and-braces check:
-            // a cookie must never outlive deactivation even if that delete failed.
+            // Validate and refresh in ONE statement, so an authenticated request
+            // still costs a single round trip.
+            //
+            // `valid` is the gate, unchanged in substance from before: the token
+            // must exist, must not have expired, and the employee must still be
+            // active (sessions are deleted on deactivation, so this is the
+            // belt-and-braces check that a cookie cannot outlive it).
+            //
+            // `bumped` is the refresh-on-use. It is throttled to at most one
+            // write per session per day: without the second condition every
+            // authenticated request would become a write for no benefit. A
+            // data-modifying CTE always executes even though nothing selects
+            // from it, and it sees the statement's snapshot, so it cannot
+            // interfere with `valid`.
             let row = sqlx::query!(
                 r#"
-                SELECT s.employee_id
-                FROM sessions s
-                JOIN employees e ON e.id = s.employee_id
-                WHERE s.token = $1 AND s.expires_at > now() AND e.is_active = true
+                WITH valid AS (
+                    SELECT s.token, s.employee_id
+                    FROM sessions s
+                    JOIN employees e ON e.id = s.employee_id
+                    WHERE s.token = $1 AND s.expires_at > now() AND e.is_active = true
+                ), bumped AS (
+                    UPDATE sessions
+                       SET expires_at = now() + make_interval(days => $2::int)
+                     WHERE token = (SELECT token FROM valid)
+                       AND expires_at < now() + make_interval(days => $2::int - 1)
+                )
+                SELECT employee_id AS "employee_id!" FROM valid
                 "#,
-                token
+                token,
+                crate::auth_core::SESSION_DAYS as i32,
             )
             .fetch_optional(&pool)
             .await

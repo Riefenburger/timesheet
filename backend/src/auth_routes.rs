@@ -5,15 +5,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use crate::auth::CurrentEmployee;
-use crate::auth_core::{generate_token, verify_password};
+use crate::auth_core::{generate_token, verify_password, SESSION_DAYS};
 use crate::names::personal_name;
+use crate::state::CookieConfig;
 
 use crate::auth::SuperAdminEmployee;
 use crate::auth_core::hash_password;
 
 const INVITE_DAYS: i64 = 7;
 
-const SESSION_DAYS: i64 = 30;
 
 #[derive(Deserialize)]
 pub struct LoginInput {
@@ -112,9 +112,22 @@ pub struct SignupInput {
     password: String,
 }
 
+/// The session cookie. Secure in production (COOKIE_SECURE=true) so a
+/// 120-day cookie is never sent in clear text; off for local HTTP dev.
+fn session_cookie(token: String, cookies: CookieConfig) -> Cookie<'static> {
+    Cookie::build(("session", token))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(cookies.secure)
+        .path("/")
+        .max_age(time::Duration::days(SESSION_DAYS))
+        .build()
+}
+
 // POST /auth/signup — consume an invite, set the password, log in. Public.
 pub async fn signup(
     State(pool): State<PgPool>,
+    State(cookies): State<CookieConfig>,
     jar: CookieJar,
     Json(payload): Json<SignupInput>,
 ) -> Result<(CookieJar, StatusCode), (StatusCode, String)> {
@@ -176,16 +189,13 @@ pub async fn signup(
     .execute(&pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let cookie = Cookie::build(("session", token))
-        .http_only(true).same_site(SameSite::Lax).path("/")
-        .max_age(time::Duration::days(SESSION_DAYS)).build();
-
-    Ok((jar.add(cookie), StatusCode::NO_CONTENT))
+    Ok((jar.add(session_cookie(token, cookies)), StatusCode::NO_CONTENT))
 }
 
 // POST /auth/login — verify email+password, create a session, set the cookie.
 pub async fn login(
     State(pool): State<PgPool>,
+    State(cookies): State<CookieConfig>,
     jar: CookieJar,
     Json(payload): Json<LoginInput>,
 ) -> Result<(CookieJar, StatusCode), (StatusCode, String)> {
@@ -236,20 +246,13 @@ pub async fn login(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Set the httpOnly session cookie.
-    let cookie = Cookie::build(("session", token))
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .path("/")
-        .max_age(time::Duration::days(SESSION_DAYS))
-        .build();
-
-    Ok((jar.add(cookie), StatusCode::NO_CONTENT))
+    Ok((jar.add(session_cookie(token, cookies)), StatusCode::NO_CONTENT))
 }
 
 // POST /auth/logout — delete the session and clear the cookie.
 pub async fn logout(
     State(pool): State<PgPool>,
+    State(cookies): State<CookieConfig>,
     jar: CookieJar,
 ) -> Result<(CookieJar, StatusCode), (StatusCode, String)> {
     if let Some(cookie) = jar.get("session") {
@@ -259,14 +262,21 @@ pub async fn logout(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
-    Ok((jar.remove(Cookie::from("session")), StatusCode::NO_CONTENT))
+    // Removal has to match the original path/secure attributes, or the browser
+    // may keep the cookie around.
+    let mut gone = Cookie::from("session");
+    gone.set_path("/");
+    gone.set_secure(cookies.secure);
+    Ok((jar.remove(gone), StatusCode::NO_CONTENT))
 }
 
 // GET /auth/me — who am I (if logged in).
 pub async fn me(
     State(pool): State<PgPool>,
+    State(cookies): State<CookieConfig>,
+    jar: CookieJar,
     current: CurrentEmployee,
-) -> Result<Json<MeResponse>, (StatusCode, String)> {
+) -> Result<(CookieJar, Json<MeResponse>), (StatusCode, String)> {
     let row = sqlx::query!(
         "SELECT id, name, first_name, last_name, middle_initial, email, role FROM employees WHERE id = $1",
         current.id
@@ -281,7 +291,16 @@ pub async fn me(
         row.first_name.as_deref(), row.middle_initial.as_deref(),
         row.last_name.as_deref(), row.name.as_deref(),
     );
-    Ok(Json(MeResponse { id: row.id, name, email: row.email, role: row.role }))
+    // CurrentEmployee has already refreshed the database expiry; re-issue the
+    // cookie with a matching max-age so the browser's copy does not lapse out
+    // from under an otherwise-active session. The SPA calls this on load, so an
+    // active user's cookie is renewed on every visit.
+    let refreshed = jar.get("session").map(|c| c.value().to_string());
+    let jar = match refreshed {
+        Some(token) => jar.add(session_cookie(token, cookies)),
+        None => jar,
+    };
+    Ok((jar, Json(MeResponse { id: row.id, name, email: row.email, role: row.role })))
 }
 
 // POST /admin/employees/{id}/reset-account — super-admin clears an employee's

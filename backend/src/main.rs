@@ -1,6 +1,8 @@
 mod auth;
 mod employees;
 mod names;
+mod verify;
+mod state;
 mod entries;
 mod totals;
 mod rates;
@@ -12,6 +14,8 @@ mod export;
 
 use axum::{routing::{get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
+use crate::state::AppState;
+use crate::verify::VerifyService;
 
 #[tokio::main]
 async fn main() {
@@ -25,6 +29,16 @@ async fn main() {
         .connect(&database_url)
         .await
         .expect("Failed to connect to the database");
+
+    // Resolved once at startup and logged, so a misconfigured deploy is obvious
+    // in the Railway logs rather than at someone's first login attempt.
+    let verify = VerifyService::from_env();
+    println!("Phone verification: {}", verify.describe());
+
+    // Sessions last up to 120 days and are refreshed on use, so expired rows
+    // linger far longer than before; verification_attempts rows are only needed
+    // for the rate-limit windows. Sweep both, once at startup and then daily.
+    spawn_cleanup(pool.clone());
 
     let app = Router::new()
         .route("/", get(root_handler))
@@ -63,7 +77,11 @@ async fn main() {
         .route("/admin/private-durations", post(private_durations::create_duration))
         .route("/admin/private-durations/{id}", put(private_durations::update_duration).delete(private_durations::delete_duration))
         .route("/admin/totals/export", get(export::export_totals))
-        .with_state(pool);
+        .with_state(AppState {
+            pool: pool.clone(),
+            verify,
+            cookies: state::CookieConfig::from_env(),
+        });
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
@@ -74,4 +92,34 @@ async fn main() {
 
 async fn root_handler() -> &'static str {
     "Hello from the timesheet backend!"
+}
+
+/// Delete expired sessions and stale rate-limit rows. Best-effort: a failure is
+/// logged and retried on the next pass rather than taking the process down.
+fn spawn_cleanup(pool: sqlx::PgPool) {
+    tokio::spawn(async move {
+        loop {
+            match sqlx::query!("DELETE FROM sessions WHERE expires_at < now()")
+                .execute(&pool)
+                .await
+            {
+                Ok(r) if r.rows_affected() > 0 => {
+                    println!("cleanup: removed {} expired session(s)", r.rows_affected());
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("cleanup: session sweep failed: {}", e),
+            }
+            // Keep a day of attempts: longer than the widest rate-limit window,
+            // short enough that the table stays small.
+            if let Err(e) = sqlx::query!(
+                "DELETE FROM verification_attempts WHERE created_at < now() - interval '1 day'"
+            )
+            .execute(&pool)
+            .await
+            {
+                eprintln!("cleanup: verification_attempts sweep failed: {}", e);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+        }
+    });
 }
