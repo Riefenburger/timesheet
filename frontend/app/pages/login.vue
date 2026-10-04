@@ -87,7 +87,11 @@ function changeNumber() {
 <template>
   <div class="min-h-screen bg-slate-100 flex items-center justify-center px-4">
     <div class="bg-white rounded-2xl shadow p-8 w-full max-w-sm">
-      <h1 class="text-2xl font-bold text-ink-900 mb-6">Timesheet</h1>
+      <!-- Sits above all three sections (chooser, password, phone), so it shows
+           on every step without being repeated. -->
+      <img src="/fishback-logo.png" alt="Fishback Studio"
+        class="w-full max-w-[260px] mx-auto mb-5" />
+      <h1 class="text-xl font-bold text-ink-900 mb-6 text-center">Timesheet</h1>
 
       <!-- Pick a path -->
       <div v-if="mode === 'choose'" class="space-y-3">

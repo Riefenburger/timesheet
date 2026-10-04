@@ -103,7 +103,9 @@ async function doSignup() {
 <template>
   <div class="min-h-screen bg-slate-100 flex items-center justify-center px-4">
     <div class="bg-white rounded-2xl shadow p-8 w-full max-w-sm">
-      <h1 class="text-2xl font-bold text-ink-900 mb-2">Set up your account</h1>
+      <img src="/fishback-logo.png" alt="Fishback Studio"
+        class="w-full max-w-[260px] mx-auto mb-5" />
+      <h1 class="text-xl font-bold text-ink-900 mb-2 text-center">Set up your account</h1>
 
       <p v-if="checking" class="text-ink-400 text-sm">Checking your invite…</p>
 

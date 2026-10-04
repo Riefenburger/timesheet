@@ -17,7 +17,10 @@ function closeMobile() {
   <div class="min-h-screen bg-slate-100">
     <!-- Mobile top bar (below md) -->
     <div class="md:hidden bg-white border-b border-slate-200 flex items-center justify-between px-4 h-14 sticky top-0 z-30">
-      <div class="text-lg font-bold text-ink-900">Timesheet</div>
+      <div class="flex items-center gap-2 min-w-0">
+        <img src="/fishback-mark.png" alt="" class="h-8 w-8 shrink-0" />
+        <span class="text-lg font-bold text-ink-900 truncate">Timesheet</span>
+      </div>
       <button @click="mobileOpen = true" class="text-ink-500 hover:text-ink-900 p-1" title="Menu">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -33,6 +36,7 @@ function closeMobile() {
       mobileOpen ? 'translate-x-0' : '-translate-x-full']">
       <div class="px-4 py-5 border-b border-slate-100 flex items-center justify-between">
         <div class="min-w-0">
+          <img src="/fishback-logo.png" alt="Fishback Studio" class="w-36 mb-2" />
           <div class="text-lg font-bold text-ink-900">Timesheet</div>
           <div v-if="user" class="text-xs text-ink-400 mt-1 truncate">
             {{ user.name }} · <span class="capitalize">{{ user.role.replace("_", " ") }}</span>
@@ -93,19 +97,36 @@ function closeMobile() {
       <!-- Desktop sidebar (md and up) -->
       <aside :class="['hidden md:flex bg-white border-r border-slate-200 flex-col shrink-0 transition-all duration-200 min-h-screen',
         collapsed ? 'w-16' : 'w-56']">
-        <div class="px-3 py-5 border-b border-slate-100 flex items-center justify-between">
-          <div v-if="!collapsed" class="min-w-0">
-            <div class="text-lg font-bold text-ink-900 truncate">Timesheet</div>
-            <div v-if="user" class="text-xs text-ink-400 mt-1 truncate">
-              {{ user.name }} · <span class="capitalize">{{ user.role.replace("_", " ") }}</span>
-            </div>
-          </div>
+        <!-- Collapsed: mark stacked above the toggle, since 64px leaves no room
+             to sit them side by side. Expanded: logo, a rule, then the app name
+             and who is signed in with the toggle centred against that block. -->
+        <div v-if="collapsed" class="px-3 py-5 border-b border-slate-100 flex flex-col items-center gap-3">
+          <img src="/fishback-mark.png" alt="Fishback Studio" class="h-8 w-8" />
           <button @click="collapsed = !collapsed"
-            class="text-ink-400 hover:text-ink-700 p-1 shrink-0" :title="collapsed ? 'Expand' : 'Collapse'">
+            class="text-ink-400 hover:text-ink-700 p-1" title="Expand">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+        </div>
+        <div v-else class="px-3 py-5 border-b border-slate-100">
+          <img src="/fishback-logo.png" alt="Fishback Studio" class="w-36 mx-auto" />
+          <!-- Separates the studio's mark from this app's own identity. -->
+          <div class="border-t border-slate-100 my-3"></div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-lg font-bold text-ink-900 truncate leading-tight">Timesheet</div>
+              <div v-if="user" class="text-xs text-ink-400 mt-0.5 truncate">
+                {{ user.name }} · <span class="capitalize">{{ user.role.replace("_", " ") }}</span>
+              </div>
+            </div>
+            <button @click="collapsed = !collapsed"
+              class="text-ink-400 hover:text-ink-700 p-1 shrink-0" title="Collapse">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
         </div>
         <nav class="flex-1 px-2 py-4 space-y-1">
           <NuxtLink to="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-ink-700 hover:bg-slate-100"
