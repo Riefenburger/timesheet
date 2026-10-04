@@ -95,7 +95,11 @@ function closeMobile() {
     <!-- Desktop layout: sidebar + content -->
     <div class="flex">
       <!-- Desktop sidebar (md and up) -->
-      <aside :class="['hidden md:flex bg-white border-r border-slate-200 flex-col shrink-0 transition-all duration-200 min-h-screen',
+      <!-- sticky + h-screen, not min-h-screen: the sidebar must be exactly the
+           window height and stay put while the page scrolls. With min-h-screen
+           it grew to match a long page, pushing Sign out (its last child) to the
+           bottom of the document instead of the bottom of the window. -->
+      <aside :class="['hidden md:flex bg-white border-r border-slate-200 flex-col shrink-0 transition-all duration-200 sticky top-0 h-screen',
         collapsed ? 'w-16' : 'w-56']">
         <!-- Collapsed: mark stacked above the toggle, since 64px leaves no room
              to sit them side by side. Expanded: logo, a rule, then the app name
@@ -128,7 +132,7 @@ function closeMobile() {
             </button>
           </div>
         </div>
-        <nav class="flex-1 px-2 py-4 space-y-1">
+        <nav class="flex-1 overflow-y-auto px-2 py-4 space-y-1">
           <NuxtLink to="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-ink-700 hover:bg-slate-100"
             active-class="bg-slate-100 text-ink-900 font-medium" :title="collapsed ? 'My Time' : ''">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
