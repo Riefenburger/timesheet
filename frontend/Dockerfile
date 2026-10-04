@@ -11,11 +11,13 @@ RUN npm ci
 COPY . .
 RUN npm run generate
 
-# ===== Stage 2: serve the static files =====
+# ===== Stage 2: serve the static files + proxy /api =====
 FROM caddy:2-alpine AS runtime
+
+# Custom Caddy config: serve the SPA and proxy /api to the backend.
+COPY Caddyfile /etc/caddy/Caddyfile
 
 # Copy the built static site into Caddy's web root.
 COPY --from=builder /app/.output/public /usr/share/caddy
 
 EXPOSE 80
-# caddy:2-alpine's default config already serves /usr/share/caddy on :80

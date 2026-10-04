@@ -1,0 +1,13 @@
+:{$PORT} {
+	# API calls → backend service over Railway's private network (http, with port).
+	handle_path /api/* {
+		reverse_proxy {$BACKEND_URL}
+	}
+
+	# Everything else: serve the static SPA with client-side-routing fallback.
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}
